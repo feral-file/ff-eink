@@ -108,6 +108,31 @@ and `otadata`, so the first flash after it is a full flash over USB
 regions). `nvs` at 0x9000 is untouched. The image must be signed: a dev-key
 image on lab boards, a release `-full.zip` on anything that ships.
 
+### Results: reference unit, 2026-11-10
+
+Signed bench build (dev key) at `1f331b8`, full USB flash over the earlier
+single-app layout, with `--after no_reset` so nothing ran until the logger
+booted it.
+
+| Check | Result |
+|---|---|
+| Boot from the new layout | pass: partition table `nvs`/`otadata`/`ota_0`/`ota_1`; booted `ota_0` |
+| Signed image accepted at startup | pass: the app ran (an unsigned app aborts) |
+| `nvs` preserved across the reflash | pass: `boot_count` continued, name default kept |
+| Chart, bars, checker | pass, refresh 26015 / 26111 / 26111 ms, no errors; again 25982 ms after a later restart |
+| SW8 press steps the pattern | pass, twice: restart ~0.13 s after release, `reset_reason: SW`, `restart_cause: reset_key`; next boot `SW8 (GPIO12) at boot: 1 -> normal` |
+| Maintenance mode | pass: SW8 held while plugging in → `SW8 (GPIO12) at boot: 0 … -> maintenance`, no refresh; esptool then connected (`flash_id`) |
+| Grace window with the normal build | not yet run: needs the normal build, scheduled with network bring-up |
+
+Notes:
+
+- `brownouts` read 1 before this flash. It most likely comes from an
+  earlier cable replug: a plug-in can bounce the supply. The soak's pass
+  criterion is therefore "`brownouts` unchanged during the run", not zero.
+- A refresh takes about 26 s on every frame, not only after a reset. That
+  is the panel's own waveform (about 1.2 s of each frame is ours: wake,
+  init, data). Expect about 28 s per pushed frame including upload.
+
 ## Network bring-up
 
 Normal build, board on the adapter. Find the DHCP lease on the router,
