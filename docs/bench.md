@@ -48,16 +48,45 @@ Restore: `esptool.py -p /dev/cu.usbmodem1101 write_flash 0 <that file>`.
 
 ## 2. Buttons and the way back to flashing
 
-The board has only two buttons: **Reset** and **Power** (silkscreen SW7/SW8,
-top-left in spec p.5). The function buttons SW2–SW4 in spec §3.1 are
-reserved footprints, not fitted, and there is no BOOT button.
+Source for buttons and pins: Good Display's **Chinese** manual
+《ESP32-133C02-IL 驱动开发板说明书》 §3.1–3.6 (good-display.cn), confirmed on the
+bench board. The English specification rev 2.0 §3.1 ("SW2–SW4 on IO12–14,
+triggered by a high level") is wrong.
+
+| Button | Wiring | What it does with this firmware |
+|---|---|---|
+| **SW8** "复位按键" (reset key) | GPIO12, low while pressed. **Not** the chip's EN pin | press: restart on release, once the panel is idle; held ≥ 1 s while powering up: **maintenance mode** |
+| **SW7** "电源按键" (power key) | IP5306 battery boost key (manual: IO13) | nothing on USB power |
+
+There is no BOOT button, and no button reaches EN, so a **hard** restart is
+unplugging and replugging the USB-C cable at the board (USB is its only
+power source). Never replug while the panel is refreshing.
+
+Measured 2026-11-10 (passive USB re-enumeration watch plus a GPIO watch in
+the bench build): SW8 drove GPIO12 1→0→1 on each press and never reset the
+chip, even held 10 s; SW7 changed no watched GPIO and did not reset it.
+
+Open pin questions for Good Display (the Chinese manual conflicts with
+other sources; nothing here blocks the spike):
+
+- **IO45**: manual §3.4 says power LED, low = on; the 2026-04-20 example
+  drives it as the panel load switch (TPS22913B). Bench: IO45 high and the
+  panel works. **Unverified: that IO45 low removes panel power.** If it does
+  not, the firmware's post-error "power-cycle" is only a reset plus re-init
+  (harmless, but not a power cycle). Check once: panel VCI with IO45 low.
+- **IO48**: manual §3.6 says "LDO EN, high = enable", without naming the
+  rail. This firmware leaves IO48 an input; board and panel work.
+- **IO12**: manual lists it both as the reset key and as IP5306 I2C SCL
+  (SDA IO11). This firmware never talks to the IP5306.
 
 - **Bench build** (G1): never starts USB host, so flashing works at any time.
 - **Normal build**: the USB-C port turns into a USB host port 60 s after each
-  boot, and the port disappears from the Mac. To reflash: build first, then
-  press **Reset** and run the esptool line within 60 s. This is the only way
-  back; no button is needed. Do not use `idf.py flash` here: it rebuilds
-  before connecting and can miss the window.
+  boot, and the port disappears from the Mac. Two ways back:
+  - **Maintenance mode:** hold SW8 while plugging in USB-C, for at least
+    1 s. The log shows `maintenance mode (SW8 held at boot)`; flash at leisure.
+  - **Grace window:** build first, replug, and run the esptool line within
+    60 s. Do not use `idf.py flash` here: it rebuilds before connecting and
+    can miss the window.
 
 ```sh
 idf.py build                       # build FIRST: idf.py flash would rebuild inside the window
@@ -73,10 +102,11 @@ Board on the Mac's USB-C (power and serial). Flash the bench build:
 idf.py -B build-bench -D SDKCONFIG=build-bench/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.bench" -p /dev/cu.usbmodem1101 flash monitor
 ```
 
-Each boot shows the next pattern, so **press Reset** to step:
-chart → bars → checker → chart. Before each Reset, wait for the log line
-`frame seq=0 shown` (about 20 s warm, up to ~50 s cold): a Reset during a
-refresh cuts the panel's power mid-waveform. Photograph each pattern.
+Each boot shows the next pattern, so **press SW8** (or replug) to step:
+chart → bars → checker → chart. SW8 waits for the refresh to finish before
+restarting. A replug does not: before replugging, wait for the log line
+`frame seq=0 shown` (about 26 s at room temperature, up to ~50 s cold).
+Photograph each pattern.
 
 | Check | Expected |
 |---|---|
@@ -91,12 +121,24 @@ docs/api.md stays as specified.
 
 | Date | Pattern | Result | refresh_ms | Photo |
 |---|---|---|---|---|
-| | | | | |
+| 2026-11-10 | chart | pass: corners, bar order, centre seam all correct; no mirror, halves not swapped | 26023 | `~/esp/work/bench-logs/2026-11-10-g1-chart.jpg` |
+| 2026-11-10 | bars | pass | 26020 | `…-g1-bars.jpg` |
+| 2026-11-10 | checker | pass: diagonals continuous across the seam | 25986 | `…-g1-checker.jpg` |
+
+Orientation: the frame's top edge is the edge **opposite the FPC**; view the
+panel portrait with the FPC at the bottom. The wire format needs no change.
+Bench build at ff-eink `f031a53` + pin watch; factory image backed up and a
+restore drill passed first (`2026-11-10-g1-bench.log`, `…-efuse-summary.txt`).
 
 Before moving on, flash the normal build once on the Mac cable and check the
 way back: `idf.py -p /dev/cu.usbmodem1101 flash monitor`; the log shows
-`USB host starts in 60 s`. Wait until the port disappears, then press Reset
-and run the esptool line above within 60 s: it must succeed.
+`USB host starts in 60 s`. Wait until the port disappears, then check both
+ways back: (1) replug and run the esptool line within 60 s; (2) hold SW8
+while replugging, confirm `maintenance mode` in the log and that
+`idf.py -p /dev/cu.usbmodem1101 flash` succeeds. Also replug three times
+without touching SW8, on the Mac and later on the PoE adapter: the boot line
+`SW8 (GPIO12) at boot: 1 ... -> normal` must appear every time (a false
+maintenance entry would leave the device offline).
 
 ## Network bring-up
 

@@ -12,7 +12,7 @@ hardware. Bench procedure and results: [docs/bench.md](docs/bench.md).
 
 | Path | What |
 |---|---|
-| `main/panel.c` | panel driver: official init sequence, GPIO chip-selects, DMA bounce buffer, capped BUSY waits, silent-panel check, deep sleep, power-cycle recovery |
+| `main/panel.c` | panel driver: official init sequence, GPIO chip-selects, DMA bounce buffer, capped BUSY waits, silent-panel check, deep sleep, power-cycle recovery (IO45 power removal unverified) |
 | `main/frame.h` | frame format and pure helpers (host-tested) |
 | `main/patterns.c` | generated test patterns for bring-up |
 | `main/net_usb.c` | USB host + CDC-ECM NIC (`espressif/iot_usbh_ecm`) with DHCP |
@@ -47,13 +47,30 @@ idf.py build
 
 Component versions are locked in `dependencies.lock`.
 
-## Flash, and the way back
+## Buttons, flashing and the way back
 
-The board has only **Reset** and **Power** buttons (no BOOT button; the
-spec's SW2–SW4 are not fitted). In the normal build the USB-C port becomes a
-USB host port 60 s after boot. To reflash: board on the computer's USB-C,
-build first, then press **Reset** and run esptool directly within 60 s
-(`idf.py flash` would rebuild inside the window):
+Source for buttons and pins: Good Display's **Chinese** manual
+《ESP32-133C02-IL 驱动开发板说明书》 §3.1–3.6 (good-display.cn), confirmed on the
+bench board. The English specification rev 2.0 §3.1 ("SW2–SW4 on IO12–14,
+triggered by a high level") is wrong.
+
+| Button | Wiring | What it does with this firmware |
+|---|---|---|
+| **SW8** "复位按键" (reset key) | GPIO12, low while pressed. **Not** the chip's EN pin | press: restart on release, once the panel is idle; held ≥ 1 s while powering up: **maintenance mode** |
+| **SW7** "电源按键" (power key) | IP5306 battery boost key (manual: IO13) | nothing on USB power |
+
+There is no BOOT button, and no button reaches EN, so a **hard** restart is
+unplugging and replugging the USB-C cable at the board (USB is its only
+power source). Never replug while the panel is refreshing.
+
+In the normal build the USB-C port becomes a USB host port 60 s after boot,
+and the board stops being a serial/JTAG device. Two ways to flash:
+
+- **Maintenance mode:** hold **SW8** while plugging the USB-C cable into the
+  computer, and keep holding for at least 1 s. No USB host, no network; flash and monitor at any time
+  (`idf.py -p /dev/cu.usbmodem1101 flash monitor`).
+- **Grace window:** replug, then run esptool directly within 60 s
+  (`idf.py flash` would rebuild inside the window). Works even without SW8.
 
 ```sh
 idf.py build                       # build FIRST: idf.py flash would rebuild inside the window
@@ -69,8 +86,8 @@ Back up the factory firmware before the first flash (docs/bench.md §1).
 idf.py -B build-bench -D SDKCONFIG=build-bench/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.bench" -p /dev/cu.usbmodem1101 flash monitor
 ```
 
-Each boot shows the next test pattern (chart → bars → checker), so pressing
-Reset steps through them.
+Each boot shows the next test pattern (chart → bars → checker); press SW8
+(or replug) to step.
 
 ## Push frames
 

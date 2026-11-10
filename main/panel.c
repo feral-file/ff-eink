@@ -20,6 +20,9 @@
  *     instant successful refresh.
  *   - After any panel error the panel is power-cycled through LOAD_SW, with
  *     its signal lines driven low first so they do not back-power it.
+ *     Unverified on this board: that IO45 low really removes panel power
+ *     (the CN manual calls IO45 the power LED). If it does not, this is a
+ *     reset plus re-init, which is still safe.
  *
  * Board pins: ESP32-133C02-IL spec rev 2.0 p.5 and the example's pindefine.h.
  * The panel's D/C pin is unused: commands go as an 8-bit SPI command phase.
@@ -49,7 +52,9 @@ static const char *TAG = "panel";
 #define PIN_CS_S 17
 #define PIN_RST 6
 #define PIN_BUSY 7    /* low = busy; 2 kOhm pull-up on the panel side */
-#define PIN_LOAD_SW 45 /* TPS22913B load switch, high = panel powered */
+#define PIN_LOAD_SW 45 /* TPS22913B load switch, high = panel powered. The CN
+                        * manual §3.4 calls IO45 the power LED (low = on);
+                        * the vendor code and the bench say load switch. */
 
 #define PANEL_SPI_HOST SPI3_HOST
 #define PANEL_SPI_HZ (10 * 1000 * 1000) /* vendor value; datasheet max 20 MHz */

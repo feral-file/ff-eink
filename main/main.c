@@ -5,23 +5,36 @@
  * Boot sequence and why it is ordered this way:
  *   1. NVS counters (boot_count, brownouts, previous restart cause): the
  *      pusher attributes missed frames to reboots from these.
- *   2. Panel (frame buffer, SPI, power).
- *   3. Either the bench build (CONFIG_FF_EINK_BENCH_PATTERNS): show the next
- *      test pattern and stop, never touching USB; or the normal build: a
- *      60 s grace window, then USB host + ECM network, HTTP API, link
- *      watchdog.
+ *   2. Reset key check (SW8 held -> maintenance), before anything that could
+ *      hang or take the USB PHY.
+ *   3. Panel (frame buffer, SPI, power) and the reset-key task.
+ *   4. Bench build (CONFIG_FF_EINK_BENCH_PATTERNS): show the next test
+ *      pattern and stop, never touching USB. Maintenance: stop, never
+ *      touching USB. Normal build: a 60 s grace window, then USB host + ECM
+ *      network, HTTP API, link watchdog.
  *
- * The grace window is the only way back to reflashing. The board's only
- * USB-C becomes a USB *host* port in the normal build, which removes the
- * USB-Serial-JTAG device and with it esptool's auto-reset into download
- * mode. The board has no BOOT button, and its function buttons SW2-SW4
- * (spec 3.1, IO12-14) are reserved footprints, not fitted: only Reset and
- * Power exist. During the window USB-Serial-JTAG is still up, so pressing
- * Reset and flashing within 60 s always works.
+ * Buttons (Good Display Chinese manual 《ESP32-133C02-IL 驱动开发板说明书》
+ * §3.1, confirmed on the bench board 2026-11-10; the English spec rev 2.0
+ * §3.1 "SW2-SW4, IO12-14, high level" is wrong):
+ *   - SW8 "复位按键" = GPIO12, low when pressed. It is NOT wired to the chip's
+ *     EN pin: the "reset" exists only if firmware implements it, which this
+ *     file does (reset_key_task).
+ *   - SW7 "电源按键" = the IP5306 battery boost key (manual: IO13); it does
+ *     nothing to the ESP32 on USB power. Unused here.
+ * No button reaches EN and there is no BOOT button, so a hard restart is a
+ * USB-C replug (USB is the only power source on the bench).
+ *
+ * Ways back to reflashing once the normal build has turned the only USB-C
+ * into a USB *host* port (no USB-Serial-JTAG, so no esptool auto-reset):
+ *   - Maintenance: hold SW8 while replugging USB-C, for >= 1 s. No USB host, no
+ *     network; flash at leisure. Needs this firmware to boot that far.
+ *   - Grace window: for 60 s after every boot, USB-Serial-JTAG is still up.
+ *     Works even if SW8 or the maintenance check were broken.
  */
 #include <stdatomic.h>
 #include <string.h>
 
+#include "driver/gpio.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -44,13 +57,25 @@ static const char *TAG = "main";
  * recovery path; a restart costs at most a missed frame or two. */
 #define LINK_WATCHDOG_US (10LL * 60 * 1000 * 1000)
 
-/* Long enough for: Reset, the Mac re-enumerating the port, and esptool
+/* Long enough for: a restart (replug), the Mac re-enumerating the port, and esptool
  * starting (not building!). A reboot already costs a frame, so the extra
  * boot delay barely matters for the soak. */
 #define FLASH_GRACE_MS 60000
 
+/* SW8: GPIO12, pulled up on the board (reads 1 idle), low while pressed.
+ * The manual also lists IO12 as the IP5306 I2C SCL; this firmware never
+ * talks to the IP5306, so the line only ever moves for the button. */
+#define PIN_RESET_KEY 12
+#define RESET_KEY_DEBOUNCE_MS 50
+/* Maintenance needs SW8 held this long at boot. Long enough that the
+ * R121/C85 RC on the key line, or a slow supply ramp, cannot fake a hold
+ * (those settle in milliseconds); a person holding the key while plugging
+ * in easily exceeds it. */
+#define MAINTENANCE_HOLD_MS 1000
+
 #define NVS_NS "ffeink"
 #define RESTART_LINK_WATCHDOG "link_watchdog"
+#define RESTART_RESET_KEY "reset_key"
 
 static api_boot_info_t s_boot;
 static char s_restart_cause[24];
@@ -134,8 +159,8 @@ static void restart_with_cause(const char *cause)
 
 #if CONFIG_FF_EINK_BENCH_PATTERNS
 /* Bench build (gate G1): each boot shows the next generated pattern, so
- * pressing Reset steps chart -> bars -> checker without any network or
- * button. The index survives the reset in NVS. Seq 0 marks a local pattern. */
+ * a restart (SW8, or a replug) steps chart -> bars -> checker without any
+ * network. The index survives the reset in NVS. Seq 0 marks a local pattern. */
 static void bench_show_next_pattern(void)
 {
     uint8_t idx = 0;
@@ -151,10 +176,69 @@ static void bench_show_next_pattern(void)
     uint8_t *fb = panel_claim(); /* just booted: always idle */
     pattern_draw(fb, p);
     panel_submit(0);
-    ESP_LOGW(TAG, "bench build: showing pattern '%s' (%d of %d); press Reset for the next. "
+    ESP_LOGW(TAG, "bench build: showing pattern '%s' (%d of %d); press SW8 for the next. "
                   "No network in this build.", pattern_name(p), p + 1, PATTERN_COUNT);
 }
+
 #endif
+
+static void reset_key_init(void)
+{
+    const gpio_config_t in = {
+        .pin_bit_mask = BIT64(PIN_RESET_KEY),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE, /* belt and braces; the board pulls up too */
+    };
+    gpio_config(&in);
+}
+
+/* True if SW8 reads low on every 5 ms sample for `ms`. */
+static bool reset_key_held(int ms)
+{
+    for (int t = 0; t < ms; t += 5) {
+        if (gpio_get_level(PIN_RESET_KEY) != 0) {
+            return false;
+        }
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    return true;
+}
+
+/*
+ * SW8 as the board's reset key: a press restarts the chip on RELEASE, and
+ * only once the panel is idle, so a press mid-refresh never cuts a waveform
+ * (the restart waits up to ~2 min, panel.c's caps). Restarting on release,
+ * not on press, matters: a press still held when the next boot samples the
+ * key would otherwise drop the device into maintenance (offline). The key
+ * only arms after it has been seen released, so holding it through boot
+ * (maintenance) does not restart either.
+ */
+static void reset_key_task(void *arg)
+{
+    bool armed = false;
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        if (gpio_get_level(PIN_RESET_KEY) != 0) {
+            armed = true;
+            continue;
+        }
+        if (!armed || !reset_key_held(RESET_KEY_DEBOUNCE_MS)) {
+            continue;
+        }
+        ESP_LOGW(TAG, "SW8 pressed: restarting on release, once the panel is idle");
+        while (gpio_get_level(PIN_RESET_KEY) == 0) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        for (;;) {
+            panel_status_t p;
+            panel_get_status(&p);
+            if (p.state == PANEL_IDLE) {
+                restart_with_cause(RESTART_RESET_KEY);
+            }
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+    }
+}
 
 static void link_watchdog(void)
 {
@@ -184,6 +268,11 @@ static void link_watchdog(void)
 void app_main(void)
 {
     boot_counters();
+    reset_key_init();
+    int sw8_at_boot = gpio_get_level(PIN_RESET_KEY);
+    bool maintenance = sw8_at_boot == 0 && reset_key_held(MAINTENANCE_HOLD_MS);
+    ESP_LOGI(TAG, "SW8 (GPIO12) at boot: %d at %lld ms -> %s", sw8_at_boot,
+             esp_timer_get_time() / 1000, maintenance ? "maintenance" : "normal");
 
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
@@ -195,6 +284,14 @@ void app_main(void)
         ESP_LOGE(TAG, "panel init failed: %s", esp_err_to_name(err));
         vTaskDelay(pdMS_TO_TICKS(10000));
         restart_with_cause("panel_init");
+    }
+
+    xTaskCreatePinnedToCore(reset_key_task, "sw8", 3072, NULL, 2, NULL, 1);
+
+    if (maintenance) {
+        ESP_LOGW(TAG, "maintenance mode (SW8 held at boot): no USB host, no network; "
+                      "flash at any time, press SW8 to restart");
+        return; /* USB-Serial-JTAG stays */
     }
 
 #if CONFIG_FF_EINK_BENCH_PATTERNS

@@ -61,7 +61,7 @@ The response is built from cached counters and never waits on the panel.
 | `uptime_s` | seconds since boot |
 | `boot_count` | boots since flashing (NVS) |
 | `reset_reason` | this boot's reset reason: `POWERON`, `SW`, `PANIC`, `TASK_WDT`, `BROWNOUT`, … |
-| `restart_cause` | why the firmware restarted itself before this boot: `link_watchdog`, `panel_init`, or `""` |
+| `restart_cause` | why the firmware restarted itself before this boot: `link_watchdog`, `panel_init`, `reset_key` (SW8), or `""` |
 | `brownouts` | brownout resets since flashing (NVS) |
 | `state` | `idle`, `receiving` or `refreshing` |
 | `last_seq` | seq of the last frame shown successfully; `0` = a bench-build test pattern |
@@ -87,7 +87,9 @@ The response is built from cached counters and never waits on the panel.
 | `drf_timeout` | the refresh did not finish within 120 s |
 | `spi` | an SPI transfer failed |
 
-After any panel error the device power-cycles the panel. The next frame starts
+After any panel error the device power-cycles the panel through IO45 (that
+IO45 low actually removes panel power is unverified on this board; see
+docs/bench.md §2). The next frame starts
 from a hardware reset either way.
 
 ## Device-side recovery
@@ -96,7 +98,8 @@ from a hardware reset either way.
 |---|---|
 | No IP for 10 min | restart once the panel is idle (`restart_cause: link_watchdog`) |
 | Panel init fails at boot | restart after 10 s (`restart_cause: panel_init`) |
-| Panel error | power-cycle the panel through its load switch |
+| SW8 pressed | restart once the panel is idle (`restart_cause: reset_key`) |
+| Panel error | power-cycle the panel through IO45 (power removal unverified) |
 
 ## Misses
 
