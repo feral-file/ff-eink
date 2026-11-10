@@ -64,7 +64,7 @@ The response is built from cached counters and never waits on the panel.
 | `restart_cause` | why the firmware restarted itself before this boot: `link_watchdog`, `panel_init`, or `""` |
 | `brownouts` | brownout resets since flashing (NVS) |
 | `state` | `idle`, `receiving` or `refreshing` |
-| `last_seq` | seq of the last frame shown successfully; `0` = a local test pattern (SW3) |
+| `last_seq` | seq of the last frame shown successfully; `0` = a bench-build test pattern |
 | `accepted_seq` | seq of the last frame accepted |
 | `frames_accepted`, `frames_rejected`, `frames_shown` | counters since boot |
 | `panel_errors` | failed refreshes since boot |
@@ -119,6 +119,5 @@ A miss is classified only once the device has answered with its refresh
 concluded (`state == "idle"`) or with a new `boot_count`; until then it is
 held, so a panel error counted after the tick (e.g. `drf_timeout` at 120 s)
 is still attributed. Reboot rows carry the new boot's `reset_reason` and
-`restart_cause`. Do not press SW3 during a soak: a local pattern makes the
-next push meet 429 and reads as `slow_refresh`. The 24 h pass criteria allow no
+`restart_cause`. The 24 h pass criteria allow no
 `unattributed` or `no_evidence` miss, no `panel_errors` and no `BROWNOUT`.

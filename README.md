@@ -17,7 +17,7 @@ hardware. Bench procedure and results: [docs/bench.md](docs/bench.md).
 | `main/patterns.c` | generated test patterns for bring-up |
 | `main/net_usb.c` | USB host + CDC-ECM NIC (`espressif/iot_usbh_ecm`) with DHCP |
 | `main/api.c` | HTTP API, see [docs/api.md](docs/api.md) |
-| `main/main.c` | boot counters, maintenance mode, wiring, link watchdog |
+| `main/main.c` | boot counters, flash grace window, bench build, wiring, link watchdog |
 | `pusher/dither.py` | image → 960,000 B frame (crop, Floyd–Steinberg, pack) |
 | `pusher/push.py` | scheduled pusher with per-miss cause attribution, CSV log |
 
@@ -49,18 +49,28 @@ Component versions are locked in `dependencies.lock`.
 
 ## Flash, and the way back
 
-In normal mode the USB-C port becomes a host port 15 s after boot, and the
-board is then not a serial/JTAG device. Two ways to flash:
+The board has only **Reset** and **Power** buttons (no BOOT button; the
+spec's SW2–SW4 are not fitted). In the normal build the USB-C port becomes a
+USB host port 60 s after boot. To reflash: board on the computer's USB-C,
+build first, then press **Reset** and run esptool directly within 60 s
+(`idf.py flash` would rebuild inside the window):
 
-- **Grace window:** with the board on the computer's USB-C, press **Reset**
-  and run `idf.py -p /dev/cu.usbmodem1101 flash` within 15 s.
-- **Maintenance mode:** hold **SW2** and press **Reset**. USB-Serial-JTAG
-  stays, no network starts, and logs appear on the same port.
+```sh
+idf.py build                       # build FIRST: idf.py flash would rebuild inside the window
+cd build && python -m esptool --chip esp32s3 -p /dev/cu.usbmodem1101 -b 460800 \
+    --before default_reset --after hard_reset write_flash @flash_args
+```
 
 Back up the factory firmware before the first flash (docs/bench.md §1).
 
-In maintenance mode, **SW3** cycles the test patterns (chart → bars →
-checker), so the panel can be checked without a network.
+**Bench build** (panel check without a network; never starts USB host):
+
+```sh
+idf.py -B build-bench -D SDKCONFIG=build-bench/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.bench" -p /dev/cu.usbmodem1101 flash monitor
+```
+
+Each boot shows the next test pattern (chart → bars → checker), so pressing
+Reset steps through them.
 
 ## Push frames
 

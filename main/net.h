@@ -22,7 +22,7 @@ typedef struct {
 } net_status_t;
 
 /* Takes the USB PHY from USB-Serial-JTAG: after this the board cannot be
- * reflashed over USB until it reboots in maintenance mode (see main.c). */
+ * reflashed over USB until the next boot's 60 s grace window (see main.c). */
 esp_err_t net_start(void);
 
 /* Lock-free snapshot. */

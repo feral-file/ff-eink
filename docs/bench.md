@@ -46,32 +46,37 @@ esptool.py -p /dev/cu.usbmodem1101 read_flash 0 0x1000000 ~/esp/work/backup/fact
 
 Restore: `esptool.py -p /dev/cu.usbmodem1101 write_flash 0 <that file>`.
 
-## 2. First flash and the two ways back
+## 2. Buttons and the way back to flashing
 
-Normal mode turns the only USB-C into a USB host port, so the board stops
-being a serial/JTAG device and esptool cannot reach it. Two ways back:
+The board has only two buttons: **Reset** and **Power** (silkscreen SW7/SW8,
+top-left in spec p.5). The function buttons SW2–SW4 in spec §3.1 are
+reserved footprints, not fitted, and there is no BOOT button.
 
-- **Grace window (always works):** for 15 s after every boot in normal mode,
-  USB-Serial-JTAG is still up. Have the command ready, press **Reset**, and
-  run `idf.py -p /dev/cu.usbmodem1101 flash` within the window.
-- **Maintenance mode:** hold **SW2 (IO12)** while pressing **Reset**. No USB
-  host, no network; flashing and logs work indefinitely.
+- **Bench build** (G1): never starts USB host, so flashing works at any time.
+- **Normal build**: the USB-C port turns into a USB host port 60 s after each
+  boot, and the port disappears from the Mac. To reflash: build first, then
+  press **Reset** and run the esptool line within 60 s. This is the only way
+  back; no button is needed. Do not use `idf.py flash` here: it rebuilds
+  before connecting and can miss the window.
 
-The first flash relies on the grace window. Right after it, still on the Mac
-cable, check maintenance mode before leaving the board in normal mode:
-
-1. `idf.py -p /dev/cu.usbmodem1101 monitor`, press Reset without SW2: the log
-   shows `SW2=0 ... -> normal mode` and `USB host starts in 15 s`.
-2. Hold SW2, press Reset: `SW2=1 ... -> maintenance mode`, and the port stays.
-3. In maintenance mode, `idf.py -p /dev/cu.usbmodem1101 flash` succeeds.
-
-If step 2 fails, SW2 is not wired as the spec says: keep using the grace
-window and record it.
+```sh
+idf.py build                       # build FIRST: idf.py flash would rebuild inside the window
+cd build && python -m esptool --chip esp32s3 -p /dev/cu.usbmodem1101 -b 460800 \
+    --before default_reset --after hard_reset write_flash @flash_args
+```
 
 ## G1: panel from our driver, USB power only
 
-In maintenance mode (Mac cable), press **SW3** to cycle the generated
-patterns: chart → bars → checker. Photograph each.
+Board on the Mac's USB-C (power and serial). Flash the bench build:
+
+```sh
+idf.py -B build-bench -D SDKCONFIG=build-bench/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.bench" -p /dev/cu.usbmodem1101 flash monitor
+```
+
+Each boot shows the next pattern, so **press Reset** to step:
+chart → bars → checker → chart. Before each Reset, wait for the log line
+`frame seq=0 shown` (about 20 s warm, up to ~50 s cold): a Reset during a
+refresh cuts the panel's power mid-waveform. Photograph each pattern.
 
 | Check | Expected |
 |---|---|
@@ -88,9 +93,14 @@ docs/api.md stays as specified.
 |---|---|---|---|---|
 | | | | | |
 
+Before moving on, flash the normal build once on the Mac cable and check the
+way back: `idf.py -p /dev/cu.usbmodem1101 flash monitor`; the log shows
+`USB host starts in 60 s`. Wait until the port disappears, then press Reset
+and run the esptool line above within 60 s: it must succeed.
+
 ## Network bring-up
 
-Board on the adapter, normal mode (no SW2). Find the DHCP lease on the router,
+Normal build, board on the adapter. Find the DHCP lease on the router,
 then:
 
 ```sh

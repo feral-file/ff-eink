@@ -7,7 +7,7 @@
  *   IDLE --panel_claim()--> RECEIVING --panel_submit()--> REFRESHING --(panel task)--> IDLE
  *                               \--panel_abort()--> IDLE
  *
- * Writers (HTTP handler, test-pattern button) claim it, fill it, then submit.
+ * Writers (HTTP handler, bench-build test pattern) claim it, fill it, then submit.
  * The panel task is the only reader and returns the state to IDLE when the
  * refresh ends, successfully or not. A claim while not IDLE fails: that is
  * the API's 429.

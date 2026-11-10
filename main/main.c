@@ -5,24 +5,23 @@
  * Boot sequence and why it is ordered this way:
  *   1. NVS counters (boot_count, brownouts, previous restart cause): the
  *      pusher attributes missed frames to reboots from these.
- *   2. Maintenance check: SW2 (IO12) held at reset keeps the native USB port
- *      on USB-Serial-JTAG, so `idf.py flash` and logs work. The board's only
- *      USB-C becomes a USB *host* port in normal mode, which removes the
- *      serial/JTAG device and with it esptool's auto-reset into download
- *      mode; no BOOT button is documented. This check is the way back, so it
- *      runs before anything that could hang or take the PHY.
- *   3. Panel (frame buffer, SPI, power) and the SW3 test-pattern button.
- *   4. Normal mode only: a 15 s grace window, then USB host + ECM network,
- *      HTTP API, link watchdog. During the window USB-Serial-JTAG is still
- *      up, so esptool can reset the chip into download mode (press Reset,
- *      then flash). That is the second way back, and the only one that does
- *      not depend on SW2's wiring matching the spec: it makes the very first
- *      flash safe before maintenance mode has been seen working.
+ *   2. Panel (frame buffer, SPI, power).
+ *   3. Either the bench build (CONFIG_FF_EINK_BENCH_PATTERNS): show the next
+ *      test pattern and stop, never touching USB; or the normal build: a
+ *      60 s grace window, then USB host + ECM network, HTTP API, link
+ *      watchdog.
+ *
+ * The grace window is the only way back to reflashing. The board's only
+ * USB-C becomes a USB *host* port in the normal build, which removes the
+ * USB-Serial-JTAG device and with it esptool's auto-reset into download
+ * mode. The board has no BOOT button, and its function buttons SW2-SW4
+ * (spec 3.1, IO12-14) are reserved footprints, not fitted: only Reset and
+ * Power exist. During the window USB-Serial-JTAG is still up, so pressing
+ * Reset and flashing within 60 s always works.
  */
 #include <stdatomic.h>
 #include <string.h>
 
-#include "driver/gpio.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -39,15 +38,16 @@
 
 static const char *TAG = "main";
 
-#define PIN_SW2_MAINT 12   /* active-high (spec p.5) */
-#define PIN_SW3_PATTERN 13 /* active-high */
 
 /* No IP for this long -> restart. A USB NIC that wedged without a
  * disconnect event, or a host stack stuck after a replug, has no other
  * recovery path; a restart costs at most a missed frame or two. */
 #define LINK_WATCHDOG_US (10LL * 60 * 1000 * 1000)
 
-#define FLASH_GRACE_MS 15000
+/* Long enough for: Reset, the Mac re-enumerating the port, and esptool
+ * starting (not building!). A reboot already costs a frame, so the extra
+ * boot delay barely matters for the soak. */
+#define FLASH_GRACE_MS 60000
 
 #define NVS_NS "ffeink"
 #define RESTART_LINK_WATCHDOG "link_watchdog"
@@ -132,54 +132,29 @@ static void restart_with_cause(const char *cause)
     esp_restart();
 }
 
-static void buttons_init(void)
+#if CONFIG_FF_EINK_BENCH_PATTERNS
+/* Bench build (gate G1): each boot shows the next generated pattern, so
+ * pressing Reset steps chart -> bars -> checker without any network or
+ * button. The index survives the reset in NVS. Seq 0 marks a local pattern. */
+static void bench_show_next_pattern(void)
 {
-    /* Internal pull-downs keep an active-high button low if the board has no
-     * pull-down of its own; harmless if it does. */
-    const gpio_config_t in = {
-        .pin_bit_mask = BIT64(PIN_SW2_MAINT) | BIT64(PIN_SW3_PATTERN),
-        .mode = GPIO_MODE_INPUT,
-        .pull_down_en = GPIO_PULLDOWN_ENABLE,
-    };
-    gpio_config(&in);
-}
-
-/* SW2 must read high on every sample for 50 ms, so a glitch cannot drop the
- * board into maintenance (no network) by accident. */
-static bool maintenance_requested(void)
-{
-    for (int i = 0; i < 10; i++) {
-        if (gpio_get_level(PIN_SW2_MAINT) != 1) {
-            return false;
-        }
-        vTaskDelay(pdMS_TO_TICKS(5));
+    uint8_t idx = 0;
+    nvs_handle_t h;
+    bool nvs_ok = nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK;
+    if (nvs_ok) {
+        nvs_get_u8(h, "pattern", &idx);
+        nvs_set_u8(h, "pattern", (uint8_t)((idx + 1) % PATTERN_COUNT));
+        nvs_commit(h);
+        nvs_close(h);
     }
-    return true;
+    pattern_t p = (pattern_t)(idx % PATTERN_COUNT);
+    uint8_t *fb = panel_claim(); /* just booted: always idle */
+    pattern_draw(fb, p);
+    panel_submit(0);
+    ESP_LOGW(TAG, "bench build: showing pattern '%s' (%d of %d); press Reset for the next. "
+                  "No network in this build.", pattern_name(p), p + 1, PATTERN_COUNT);
 }
-
-/* SW3 press: show the next test pattern (gate G1, no network needed). Seq 0
- * marks a local pattern; pushed frames use the pusher's seq. */
-static void pattern_button_task(void *arg)
-{
-    int prev = 0;
-    pattern_t next = PATTERN_CHART;
-    for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(20));
-        int level = gpio_get_level(PIN_SW3_PATTERN);
-        if (level && !prev) {
-            uint8_t *fb = panel_claim();
-            if (fb) {
-                ESP_LOGI(TAG, "SW3: pattern %s", pattern_name(next));
-                pattern_draw(fb, next);
-                panel_submit(0);
-                next = (pattern_t)((next + 1) % PATTERN_COUNT);
-            } else {
-                ESP_LOGW(TAG, "SW3: panel busy");
-            }
-        }
-        prev = level;
-    }
-}
+#endif
 
 static void link_watchdog(void)
 {
@@ -209,10 +184,6 @@ static void link_watchdog(void)
 void app_main(void)
 {
     boot_counters();
-    buttons_init();
-    bool maintenance = maintenance_requested();
-    ESP_LOGI(TAG, "SW2=%d SW3=%d -> %s mode", gpio_get_level(PIN_SW2_MAINT),
-             gpio_get_level(PIN_SW3_PATTERN), maintenance ? "maintenance" : "normal");
 
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
@@ -225,13 +196,11 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(10000));
         restart_with_cause("panel_init");
     }
-    xTaskCreatePinnedToCore(pattern_button_task, "sw3", 3072, NULL, 2, NULL, 1);
 
-    if (maintenance) {
-        ESP_LOGW(TAG, "maintenance mode (SW2 held): USB-Serial-JTAG kept, no network. "
-                      "Flash with idf.py flash; SW3 shows test patterns.");
-        return;
-    }
+#if CONFIG_FF_EINK_BENCH_PATTERNS
+    bench_show_next_pattern();
+    return; /* USB-Serial-JTAG stays: flash and monitor work at any time */
+#endif
 
     ESP_LOGI(TAG, "USB host starts in %d s; flash now if needed", FLASH_GRACE_MS / 1000);
     vTaskDelay(pdMS_TO_TICKS(FLASH_GRACE_MS));

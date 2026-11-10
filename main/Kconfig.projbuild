@@ -1,0 +1,14 @@
+menu "ff-eink"
+
+    config FF_EINK_BENCH_PATTERNS
+        bool "Bench build: show test patterns, no network"
+        default n
+        help
+            Each boot shows the next generated test pattern (chart, bars,
+            checker), so pressing Reset steps through them. USB host and the
+            network never start, so the USB-C port stays a serial/JTAG
+            device and the board can be flashed at any time. For gate G1.
+            Build with: idf.py -B build-bench -D SDKCONFIG=build-bench/sdkconfig
+            -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.bench" build
+
+endmenu
