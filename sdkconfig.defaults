@@ -1,0 +1,28 @@
+# Board: ESP32-S3-WROOM-1-N16R8 (16 MB flash, 8 MB octal PSRAM).
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# The 960,000 B frame buffer lives in PSRAM. CAPS_ALLOC keeps plain malloc
+# internal, so lwIP/USB/httpd buffers never land in PSRAM by accident; the
+# frame buffer is the only explicit PSRAM allocation.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+
+# Console: UART0 (GPIO43/44, pad reachability unknown) plus USB-Serial-JTAG as
+# secondary output. USB-Serial-JTAG only carries logs in maintenance mode;
+# in normal mode the PHY belongs to the USB host (see main.c).
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
+
+# RTL815x NICs expose CDC-ECM as configuration 2; the enum filter selects it.
+CONFIG_USB_HOST_ENABLE_ENUM_FILTER_CALLBACK=y
+
+# 1 kHz tick so panel BUSY polling and the 20/30 ms vendor delays are real
+# (at the 100 Hz default, pdMS_TO_TICKS(1) is 0).
+CONFIG_FREERTOS_HZ=1000
+
+CONFIG_ESP_BROWNOUT_DET=y
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024

@@ -1,0 +1,5 @@
+dependencies:
+  idf: "5.5.6"
+  # USB host CDC-ECM NIC driver (Apache-2.0, esp-iot-solution). Pulls
+  # espressif/iot_usbh_cdc ^3.1 and espressif/iot_eth; dependencies.lock pins them.
+  espressif/iot_usbh_ecm: "0.4.0"
