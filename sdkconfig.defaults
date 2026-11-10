@@ -1,0 +1,50 @@
+# Board: ESP32-S3-WROOM-1-N16R8 (16 MB flash, 8 MB octal PSRAM).
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+# Two OTA slots; layout in partitions.csv (docs/ota.md).
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# A new image boots "pending verify" and must mark itself valid, else the
+# bootloader reverts to the previous slot (docs/ota.md).
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Signed apps without hardware secure boot (docs/ota.md): no eFuses are
+# burned, USB reflashing stays possible. An OTA image is checked against the
+# public key in the RUNNING app's signature block, and an unsigned app
+# aborts at startup, so every image is signed at build time with
+# signing-key.pem (gitignored): the release key in CI, a developer's own dev
+# key locally. A board only accepts updates signed with the key it was last
+# USB-flashed with.
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
+CONFIG_SECURE_BOOT_SIGNING_KEY="signing-key.pem"
+
+
+# The 960,000 B frame buffer lives in PSRAM. CAPS_ALLOC keeps plain malloc
+# internal, so lwIP/USB/httpd buffers never land in PSRAM by accident; the
+# frame buffer is the only explicit PSRAM allocation.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+
+# Console: UART0 (GPIO43/44, no known pad) plus USB-Serial-JTAG as secondary
+# output. USB-Serial-JTAG carries logs in maintenance mode, in the bench
+# build, and for the first 60 s of a normal boot; then the USB host takes the
+# PHY (main.c).
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
+
+# RTL815x NICs are expected to expose CDC-ECM as configuration 2 (unverified
+# on the board, docs/bench.md section 0); the enum filter selects it.
+CONFIG_USB_HOST_ENABLE_ENUM_FILTER_CALLBACK=y
+
+# 1 kHz tick so panel BUSY polling and the 20/30 ms vendor delays are real
+# (at the 100 Hz default, pdMS_TO_TICKS(1) is 0).
+CONFIG_FREERTOS_HZ=1000
+
+CONFIG_ESP_BROWNOUT_DET=y
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024

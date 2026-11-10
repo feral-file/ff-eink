@@ -1,0 +1,2 @@
+# Bench build for gate G1 (see main/Kconfig.projbuild).
+CONFIG_FF_EINK_BENCH_PATTERNS=y

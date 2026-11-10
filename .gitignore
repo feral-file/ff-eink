@@ -1,0 +1,12 @@
+build/
+build-bench/
+managed_components/
+sdkconfig
+sdkconfig.old
+__pycache__/
+*.pyc
+.pytest_cache/
+pusher/out/
+frame_test
+# Signing keys never go in git (docs/ota.md)
+*.pem

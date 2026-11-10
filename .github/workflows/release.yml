@@ -1,0 +1,89 @@
+# Release on a version tag: build, sign with the release key, publish.
+#
+# The release key exists only as the secret SIGNING_KEY of the "release"
+# environment, which requires approval by one of the maintainers listed as
+# its reviewers. The approval is the real gate: a v* tag can point at any
+# commit, so approvers check that the tagged commit is on main (see
+# docs/ota.md, "Signing and keys").
+# Panels accept OTA images only if signed with the key their running image
+# carries, so this job is the only way to make an image that ships.
+# keys/release-key.sha256 pins the public-key digest: if the secret ever
+# holds a different key, the release fails instead of producing images no
+# panel would accept.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read # the publish job alone gets write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.5.6
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build and sign
+        shell: bash
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          test -n "$SIGNING_KEY" || { echo "SIGNING_KEY secret missing"; exit 1; }
+          umask 077
+          printf '%s\n' "$SIGNING_KEY" > signing-key.pem
+          unset SIGNING_KEY
+          . "$IDF_PATH/export.sh"
+          idf.py build
+          rm -f signing-key.pem
+          digest=$(espsecure.py signature_info_v2 build/ff-eink.bin \
+            | sed -n 's/^Public key digest for block 0: //p' | tr -d ' ')
+          want=$(tr -d ' \n' < keys/release-key.sha256)
+          test "$digest" = "$want" || { echo "signed with $digest, expected $want"; exit 1; }
+          # The updater skips panels by version string: the image must carry
+          # exactly the tag (not e.g. "<tag>-dirty").
+          ver=$(python3 -c 'import sys; sys.path.insert(0, "pusher"); import panelctl; print(panelctl.image_version(open("build/ff-eink.bin", "rb").read()))')
+          test "$ver" = "$GITHUB_REF_NAME" || { echo "image version $ver != tag $GITHUB_REF_NAME"; exit 1; }
+      - name: Assemble assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          mkdir -p out/full
+          cp build/ff-eink.bin "out/ff-eink-${tag}.bin"
+          # Keep build/'s subdirectories: flash_args refers to them by path.
+          ( cd build && cp --parents bootloader/bootloader.bin partition_table/partition-table.bin \
+              ota_data_initial.bin ff-eink.bin flash_args ../out/full/ )
+          ( cd out && mv full "ff-eink-${tag}-full" && \
+              python3 -m zipfile -c "ff-eink-${tag}-full.zip" "ff-eink-${tag}-full" && \
+              rm -r "ff-eink-${tag}-full" )
+          cp pusher/panelctl.py pusher/dither.py pusher/push.py docs/UPDATING.txt out/
+          ( cd out && sha256sum * > SHA256SUMS )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: out/
+
+  # gh is preinstalled on the hosted runner, not in the IDF container.
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: out
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" out/* --repo "${GITHUB_REPOSITORY}" \
+            --title "ff-eink ${GITHUB_REF_NAME}" --generate-notes

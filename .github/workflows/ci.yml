@@ -1,0 +1,44 @@
+# Build and test on every push and pull request. Firmware images must be
+# signed to build at all (docs/ota.md), so CI signs them with a throwaway
+# key generated per run: these images are for checking, never for boards.
+# The release key is only reachable from release.yml's protected environment.
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.5.6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe -> firmware version
+      - name: Build normal and bench images
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          . "$IDF_PATH/export.sh"
+          espsecure.py generate_signing_key --version 2 --scheme rsa3072 signing-key.pem
+          idf.py build
+          idf.py -B build-bench -D SDKCONFIG=build-bench/sdkconfig \
+            -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.bench" build
+          espsecure.py signature_info_v2 build/ff-eink.bin
+
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: make -C test
+      - run: pip install "pytest==8.*" "pillow>=9.1"
+      - run: pytest -q pusher/tests

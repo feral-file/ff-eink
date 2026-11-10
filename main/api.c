@@ -1,0 +1,372 @@
+#include "api.h"
+
+#include <inttypes.h>
+#include <stdatomic.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/param.h>
+
+#include "cJSON.h"
+#include "esp_heap_caps.h"
+#include "esp_http_server.h"
+#include "esp_log.h"
+#include "esp_ota_ops.h"
+#include "esp_netif_ip_addr.h"
+#include "esp_timer.h"
+
+#include "frame.h"
+#include "identity.h"
+#include "net.h"
+#include "ota.h"
+#include "panel.h"
+#include "restart.h"
+
+static const char *TAG = "api";
+
+
+/* Whole-body deadline. A frame takes ~1-2 s at USB Full Speed (estimate); each recv may
+ * wait recv_wait_timeout (2 s), so a stalled client costs at most ~12 s of
+ * the single httpd task before the socket is closed. */
+#define BODY_DEADLINE_US (10 * 1000 * 1000)
+#define RECV_CHUNK 16384
+
+static const api_boot_info_t *s_boot;
+static _Atomic uint32_t s_frames_accepted;
+static _Atomic uint32_t s_frames_rejected;
+static _Atomic uint32_t s_accepted_seq;
+static _Atomic uint32_t s_last_upload_ms;
+
+static const char *state_name(panel_state_t s)
+{
+    switch (s) {
+    case PANEL_RECEIVING: return "receiving";
+    case PANEL_REFRESHING: return "refreshing";
+    default: return "idle";
+    }
+}
+
+static esp_err_t reply(httpd_req_t *req, const char *status, const char *json)
+{
+    httpd_resp_set_status(req, status);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return httpd_resp_sendstr(req, json);
+}
+
+static esp_err_t reply_code(httpd_req_t *req, const char *status, const char *code)
+{
+    char body[48];
+    snprintf(body, sizeof(body), "{\"error\":\"%s\"}", code);
+    return reply(req, status, body);
+}
+
+/* A refused frame: also counted in frames_rejected. */
+static esp_err_t reply_error(httpd_req_t *req, const char *status, const char *code)
+{
+    atomic_fetch_add(&s_frames_rejected, 1);
+    return reply_code(req, status, code);
+}
+
+static esp_err_t status_get(httpd_req_t *req)
+{
+    panel_status_t p;
+    net_status_t n;
+    panel_get_status(&p);
+    net_get_status(&n);
+
+    int64_t now = esp_timer_get_time();
+    long shown_age_s = p.last_shown_us ? (long)((now - p.last_shown_us) / 1000000) : -1;
+    esp_ip4_addr_t ip = {.addr = n.ip};
+
+    char name[NAME_MAX_LEN + 1];
+    identity_name(name);
+
+    char body[1152];
+    snprintf(body, sizeof(body),
+             "{\"name\":\"%s\",\"hw_id\":\"%s\",\"fw\":\"%s\",\"ota_state\":\"%s\",\"rolled_back\":%s,\"uptime_s\":%" PRId64 ",\"boot_count\":%" PRIu32
+             ",\"reset_reason\":\"%s\",\"restart_cause\":\"%s\",\"brownouts\":%" PRIu32
+             ",\"state\":\"%s\",\"last_seq\":%" PRIu32 ",\"accepted_seq\":%" PRIu32
+             ",\"frames_accepted\":%" PRIu32 ",\"frames_rejected\":%" PRIu32
+             ",\"frames_shown\":%" PRIu32 ",\"panel_errors\":%" PRIu32
+             ",\"last_error\":\"%s\",\"last_error_seq\":%" PRIu32 ",\"last_upload_ms\":%" PRIu32
+             ",\"last_refresh_ms\":%" PRIu32 ",\"last_frame_ms\":%" PRIu32
+             ",\"last_shown_age_s\":%ld,\"link_up\":%s,\"ip\":\"" IPSTR "\""
+             ",\"mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"usb\":\"%04x:%04x\""
+             ",\"usb_configs\":%u,\"link_downs\":%" PRIu32 ",\"ip_acquired\":%" PRIu32
+             ",\"heap_internal_free\":%u,\"heap_internal_min\":%u,\"psram_free\":%u}",
+             name, identity_hw_id(), ota_version(), ota_state(),
+             ota_rolled_back() ? "true" : "false", now / 1000000, s_boot->boot_count, s_boot->reset_reason,
+             s_boot->restart_cause, s_boot->brownouts, state_name(p.state), p.last_seq,
+             atomic_load(&s_accepted_seq), atomic_load(&s_frames_accepted),
+             atomic_load(&s_frames_rejected), p.frames_shown, p.panel_errors, p.last_error,
+             p.last_error_seq, atomic_load(&s_last_upload_ms), p.last_refresh_ms,
+             p.last_frame_ms, shown_age_s, n.link_up ? "true" : "false", IP2STR(&ip), n.mac[0],
+             n.mac[1], n.mac[2], n.mac[3], n.mac[4], n.mac[5], n.usb_vid, n.usb_pid,
+             n.usb_configs, n.link_downs, n.ip_acquired,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    return reply(req, "200 OK", body);
+}
+
+static bool parse_seq(const char *s, uint32_t *out)
+{
+    char *end;
+    unsigned long v = strtoul(s, &end, 10);
+    if (*s < '0' || *s > '9' || *end != '\0' || v > UINT32_MAX) {
+        return false;
+    }
+    *out = (uint32_t)v;
+    return true;
+}
+
+/*
+ * Return values matter here (esp_http_server semantics):
+ *   ESP_OK   -> httpd purges any unread body and keeps the connection, so the
+ *               client reads our status cleanly. Used when Content-Length is
+ *               the exact frame size (purge is bounded to one frame).
+ *   ESP_FAIL -> httpd closes the socket. Used for a wrong Content-Length
+ *               (purge would be unbounded) and for a broken/stalled body.
+ */
+static esp_err_t frame_post(httpd_req_t *req)
+{
+    if (req->content_len != FRAME_BYTES) { /* also rejects chunked (content_len 0) */
+        reply_error(req, "400 Bad Request", "length");
+        return ESP_FAIL;
+    }
+    char hdr[16];
+    uint32_t seq;
+    if (httpd_req_get_hdr_value_str(req, "X-Frame-Seq", hdr, sizeof(hdr)) != ESP_OK
+        || !parse_seq(hdr, &seq)) {
+        reply_error(req, "400 Bad Request", "seq");
+        return ESP_OK;
+    }
+    uint8_t *fb = panel_claim();
+    if (!fb) {
+        reply_error(req, "429 Too Many Requests", "busy");
+        return ESP_OK;
+    }
+
+    int64_t t0 = esp_timer_get_time();
+    size_t got = 0;
+    while (got < FRAME_BYTES) {
+        if (esp_timer_get_time() - t0 > BODY_DEADLINE_US) {
+            break;
+        }
+        int n = httpd_req_recv(req, (char *)fb + got, MIN(FRAME_BYTES - got, RECV_CHUNK));
+        if (n == HTTPD_SOCK_ERR_TIMEOUT) {
+            continue; /* bounded by the deadline above */
+        }
+        if (n <= 0) {
+            break;
+        }
+        got += (size_t)n;
+    }
+    if (got < FRAME_BYTES) {
+        panel_abort();
+        ESP_LOGW(TAG, "seq=%" PRIu32 ": body short (%u of %d B)", seq, (unsigned)got, FRAME_BYTES);
+        reply_error(req, "400 Bad Request", "body");
+        return ESP_FAIL;
+    }
+    uint32_t upload_ms = (uint32_t)((esp_timer_get_time() - t0) / 1000);
+
+    size_t bad = frame_first_invalid(fb, FRAME_BYTES);
+    if (bad != FRAME_BYTES) {
+        panel_abort();
+        ESP_LOGW(TAG, "seq=%" PRIu32 ": invalid nibble at byte %u (0x%02x)", seq, (unsigned)bad,
+                 fb[bad]);
+        reply_error(req, "422 Unprocessable Entity", "pixels");
+        return ESP_OK;
+    }
+
+    atomic_store(&s_last_upload_ms, upload_ms);
+    atomic_store(&s_accepted_seq, seq);
+    atomic_fetch_add(&s_frames_accepted, 1);
+    panel_submit(seq); /* the refresh runs in the panel task; reply now */
+    ESP_LOGI(TAG, "seq=%" PRIu32 " accepted, upload %" PRIu32 " ms", seq, upload_ms);
+
+    char body[32];
+    snprintf(body, sizeof(body), "{\"seq\":%" PRIu32 "}", seq);
+    reply(req, "202 Accepted", body);
+    return ESP_OK;
+}
+
+static esp_err_t config_reply(httpd_req_t *req)
+{
+    char name[NAME_MAX_LEN + 1];
+    identity_name(name);
+    char body[96];
+    snprintf(body, sizeof(body), "{\"name\":\"%s\",\"hw_id\":\"%s\"}", name,
+             identity_hw_id());
+    return reply(req, "200 OK", body);
+}
+
+static esp_err_t config_get(httpd_req_t *req)
+{
+    return config_reply(req);
+}
+
+/*
+ * PUT /api/v1/config  {"name":"lobby-r03-c07"}
+ * Provisioning: sets the panel's wall-position name (name_rules.h). Only
+ * "name" is accepted; any other key is refused, so a typo never looks like
+ * success. Plain HTTP like the rest of v1: the VLAN is the boundary.
+ */
+#define CONFIG_BODY_MAX 128
+static esp_err_t config_put(httpd_req_t *req)
+{
+    if (req->content_len == 0 || req->content_len > CONFIG_BODY_MAX) {
+        reply_code(req, "400 Bad Request", "length");
+        return ESP_FAIL;
+    }
+    char buf[CONFIG_BODY_MAX + 1];
+    size_t got = 0;
+    while (got < req->content_len) {
+        int n = httpd_req_recv(req, buf + got, req->content_len - got);
+        if (n <= 0) { /* a small body: one timeout is a dead client */
+            reply_code(req, "400 Bad Request", "body");
+            return ESP_FAIL;
+        }
+        got += (size_t)n;
+    }
+    buf[got] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    const cJSON *name = cJSON_GetObjectItemCaseSensitive(root, "name");
+    bool only_name = cJSON_IsObject(root) && cJSON_GetArraySize(root) == 1;
+    if (!only_name || !cJSON_IsString(name)) {
+        cJSON_Delete(root);
+        return reply_code(req, "400 Bad Request", "body");
+    }
+    esp_err_t err = identity_set_name(name->valuestring);
+    cJSON_Delete(root);
+    if (err == ESP_ERR_INVALID_ARG) {
+        return reply_code(req, "422 Unprocessable Entity", "name");
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "config: %s", esp_err_to_name(err));
+        return reply_code(req, "500 Internal Server Error", "storage");
+    }
+    return config_reply(req);
+}
+
+/*
+ * POST /api/v1/firmware: an app image (build/ff-eink.bin) into the inactive
+ * OTA slot (docs/ota.md). Single-flight with frames through panel_claim():
+ * the frame buffer is not touched, the claim only holds the state, so
+ * frames get 429 during an upload and an upload gets 429 during a refresh.
+ * esp_ota_end checks the image header, chip, appended SHA-256 and signature
+ * (CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT); a corrupt, truncated or
+ * foreign-signed image never becomes bootable. The restart waits for the
+ * panel to be idle; the new image then has to prove itself (ota.c) or the
+ * bootloader returns to this one.
+ */
+#define FW_DEADLINE_US (60 * 1000 * 1000)
+#define FW_CHUNK 4096
+static esp_err_t firmware_post(httpd_req_t *req)
+{
+    const esp_partition_t *slot = esp_ota_get_next_update_partition(NULL);
+    if (!slot || req->content_len == 0 || req->content_len > slot->size) {
+        reply_code(req, "400 Bad Request", "length");
+        return ESP_FAIL;
+    }
+    if (!panel_claim()) {
+        reply_code(req, "429 Too Many Requests", "busy");
+        return ESP_FAIL; /* do not purge up to 3 MB on the single httpd task */
+    }
+    static char buf[FW_CHUNK]; /* httpd runs handlers on one task */
+    esp_ota_handle_t h;
+    esp_err_t err = esp_ota_begin(slot, req->content_len, &h);
+    if (err != ESP_OK) {
+        panel_abort();
+        ESP_LOGE(TAG, "ota begin: %s", esp_err_to_name(err));
+        reply_code(req, "500 Internal Server Error", "storage");
+        return ESP_FAIL;
+    }
+    int64_t t0 = esp_timer_get_time();
+    size_t got = 0;
+    while (got < req->content_len && err == ESP_OK) {
+        if (esp_timer_get_time() - t0 > FW_DEADLINE_US) {
+            err = ESP_ERR_TIMEOUT;
+            break;
+        }
+        int n = httpd_req_recv(req, buf, MIN(req->content_len - got, FW_CHUNK));
+        if (n == HTTPD_SOCK_ERR_TIMEOUT) {
+            continue;
+        }
+        if (n <= 0) {
+            err = ESP_FAIL;
+            break;
+        }
+        err = esp_ota_write(h, buf, n);
+        got += (size_t)n;
+    }
+    if (err != ESP_OK) {
+        esp_ota_abort(h);
+        panel_abort();
+        ESP_LOGW(TAG, "firmware upload failed after %u B: %s", (unsigned)got, esp_err_to_name(err));
+        if (err == ESP_ERR_OTA_VALIDATE_FAILED) {
+            /* esp_ota_write refuses a body that does not start with the
+             * image magic: the data is not an app image at all. */
+            reply_code(req, "422 Unprocessable Entity", "image");
+        } else {
+            reply_code(req, "400 Bad Request", "body");
+        }
+        return ESP_FAIL;
+    }
+    err = esp_ota_end(h);
+    if (err == ESP_OK) {
+        err = esp_ota_set_boot_partition(slot);
+    }
+    if (err != ESP_OK) {
+        panel_abort();
+        ESP_LOGW(TAG, "firmware image refused: %s", esp_err_to_name(err));
+        return reply_code(req, "422 Unprocessable Entity", "image");
+    }
+    esp_app_desc_t desc;
+    esp_ota_get_partition_description(slot, &desc);
+    ESP_LOGW(TAG, "firmware %s written to %s in %lld ms; restarting when idle", desc.version,
+             slot->label, (esp_timer_get_time() - t0) / 1000);
+    char body[64];
+    snprintf(body, sizeof(body), "{\"version\":\"%.32s\"}", desc.version);
+    reply(req, "202 Accepted", body);
+    panel_abort();
+    restart_when_idle_async("ota");
+    return ESP_OK;
+}
+
+esp_err_t api_start(const api_boot_info_t *boot)
+{
+    s_boot = boot;
+    httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
+    /* 10 KB: esp_ota_end and esp_ota_set_boot_partition each verify the
+     * image, signature included (sig block, mbedtls RSA contexts), on this
+     * task's stack; frames alone would need about 6 KB. */
+    cfg.stack_size = 10240;
+    cfg.recv_wait_timeout = 2;
+    cfg.send_wait_timeout = 5;
+    cfg.max_open_sockets = 4;
+    cfg.lru_purge_enable = true;
+
+    httpd_handle_t server;
+    esp_err_t err = httpd_start(&server, &cfg);
+    if (err != ESP_OK) {
+        return err;
+    }
+    static const httpd_uri_t status = {
+        .uri = "/api/v1/status", .method = HTTP_GET, .handler = status_get};
+    static const httpd_uri_t frame = {
+        .uri = "/api/v1/frame", .method = HTTP_POST, .handler = frame_post};
+    static const httpd_uri_t cfg_get = {
+        .uri = "/api/v1/config", .method = HTTP_GET, .handler = config_get};
+    static const httpd_uri_t cfg_put = {
+        .uri = "/api/v1/config", .method = HTTP_PUT, .handler = config_put};
+    httpd_register_uri_handler(server, &status);
+    httpd_register_uri_handler(server, &frame);
+    httpd_register_uri_handler(server, &cfg_get);
+    httpd_register_uri_handler(server, &cfg_put);
+    static const httpd_uri_t fw_post = {
+        .uri = "/api/v1/firmware", .method = HTTP_POST, .handler = firmware_post};
+    httpd_register_uri_handler(server, &fw_post);
+    return ESP_OK;
+}
