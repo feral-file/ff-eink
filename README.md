@@ -61,9 +61,6 @@ The panel API is plain HTTP with no authentication, so **panels must sit on a de
 
 ## Licence and sources
 
-MIT (see `LICENSE`).
-
-- **Panel register values and command order** are facts taken from Good Display's example `GDEP133C02.c` (2026-04-20). That example has no licence, and none of its code is used.
-- **`espressif/iot_usbh_ecm`, `iot_usbh_cdc` and `iot_eth`** are Apache-2.0 and are fetched by the component manager.
-- **The ink colours in `pusher/dither.py`** are measured numbers from Frans-Willem/epd-dither (AGPL-3.0). Only the numbers are used, with attribution; none of its code is.
-- **mvs90/esphome-usb-ethernet** (GPL-3.0) served as a reference for the method only; none of its code is used.
+MIT (see `LICENSE`). Third-party data, facts and the licences that apply to
+firmware binaries are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md);
+standard licence texts are in [LICENSES/](LICENSES/).

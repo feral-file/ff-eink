@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn images into 960,000-byte GDEP133C02 frames (see docs/api.md).
 
-    python3 dither.py photo.jpg other.png -o out/ [--palette d65] [--preview]
+    python3 dither.py photo.jpg other.png -o out/ [--preview] [--palette aitjcize]
 
 Pipeline: EXIF rotate -> RGB -> portrait 3:4 cover-crop -> 1200x1600 ->
 Floyd-Steinberg onto the six panel inks -> 4 bpp, even-x pixel in the high
@@ -22,16 +22,34 @@ FRAME_BYTES = W * H // 2
 CODES = (0x0, 0x1, 0x2, 0x3, 0x5, 0x6)
 K, WHITE, Y, R, B, G = CODES
 
-# Measured Spectra 6 inks (i1 Pro spectrophotometer, reTerminal E1004 /
-# T133A01 panel, same panel class). Numbers only, from Frans-Willem/epd-dither
-# src/palette.rs @ 9b461577 (2026-05-03); that repository is AGPL-3.0 and no
-# code is taken from it.
+# Ink colours, K W Y R B G order. Numbers only, no code, from the projects
+# below; provenance and licences in THIRD_PARTY_NOTICES.md.
+#
+#   bpc80        Frans-Willem/epd-dither src/palette.rs @ 9b461577
+#                (SPECTRA6_D65_BPC80_ADJUSTED; GPL-3.0 at that commit,
+#                AGPL-3.0-or-later since eccead50, values unchanged), the
+#                only set taken from that repository: spectrophotometer measurement of a
+#                reTerminal E1004 / T133A01 panel (same panel class) under
+#                D65 light, with 80 % black-point compensation.
+#   aitjcize     aitjcize/esp32-photoframe main/color_palette.c @ 54d87a36
+#                (MIT): the default 6-colour palette of that photo frame.
+#                Its own pipeline also applies an S-curve and extra
+#                saturation before dithering; only the palette is here.
+#   epdoptimize  paperlesspaper/epdoptimize src/dither/data/
+#                default-palettes.json "spectra6" @ 25f42661 (Apache-2.0).
+#
+# Which palette, judged on the panel itself (docs/bench.md, 2026-11-10): a
+# dark, high-contrast artwork looked clearly best with "bpc80": clean, deep
+# blacks. The uncompensated measurement (epd-dither's D65_ADJUSTED) flattened
+# everything darker than the black ink into one colour, and a per-image tone
+# mapping onto it put coloured noise in the shadows; neither is shipped. Screen previews exaggerate palettes with brighter inks:
+# judge on the panel.
 PALETTES = {
-    # SPECTRA6_D65_ADJUSTED: lossless, panel-realistic. Default.
-    "d65": ((39, 49, 79), (179, 199, 210), (204, 186, 0), (147, 36, 0), (0, 92, 171), (76, 138, 106)),
-    # SPECTRA6_D65_BPC80_ADJUSTED: black-point-compensated and stretched (lossy).
     "bpc80": ((22, 29, 49), (206, 227, 234), (234, 212, 0), (159, 0, 0), (0, 96, 186), (81, 155, 99)),
+    "aitjcize": ((2, 2, 2), (190, 200, 200), (205, 202, 0), (135, 19, 0), (5, 64, 158), (39, 102, 60)),
+    "epdoptimize": ((31, 34, 38), (185, 199, 201), (193, 187, 30), (98, 32, 30), (35, 63, 142), (53, 86, 58)),
 }
+DEFAULT_PALETTE = "bpc80"
 
 # idx -> code in the high / low nibble, as bytes.translate tables.
 _HI = bytes((CODES[i] << 4) if i < 6 else 0xFF for i in range(256))
@@ -75,13 +93,13 @@ def unpack(frame: bytes) -> bytes:
     return bytes(out)
 
 
-def dither(img: Image.Image, palette: str = "d65") -> bytes:
+def dither(img: Image.Image, palette: str = DEFAULT_PALETTE) -> bytes:
     """Any image -> frame bytes."""
     q = fit(img).quantize(palette=_palette_image(palette), dither=Image.Dither.FLOYDSTEINBERG)
     return pack(q.tobytes())
 
 
-def preview(frame: bytes, palette: str = "d65") -> Image.Image:
+def preview(frame: bytes, palette: str = DEFAULT_PALETTE) -> Image.Image:
     """Frame bytes -> RGB image in the measured inks, for a look before pushing."""
     p = Image.frombytes("P", (W, H), unpack(frame))
     p.putpalette([v for rgb in PALETTES[palette] for v in rgb])
@@ -116,7 +134,8 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("images", nargs="*", type=Path)
     ap.add_argument("-o", "--out", type=Path, required=True, help="output directory")
-    ap.add_argument("--palette", choices=sorted(PALETTES), default="d65")
+    ap.add_argument("--palette", choices=sorted(PALETTES), default=DEFAULT_PALETTE,
+                    help="bpc80 (default), aitjcize, epdoptimize; see docs/pusher.md")
     ap.add_argument("--preview", action="store_true", help="also write <name>.preview.png")
     ap.add_argument("--chart", action="store_true", help="also write chart.bin")
     args = ap.parse_args(argv)

@@ -61,10 +61,15 @@ def test_palette_has_exactly_six_entries():
         assert len(pal.getpalette()) == 18
 
 
-def test_pure_ink_maps_to_its_code():
-    for i, rgb in enumerate(dither.PALETTES["d65"]):
-        frame = dither.dither(Image.new("RGB", (30, 40), rgb))
+@pytest.mark.parametrize("palette", sorted(dither.PALETTES))
+def test_pure_ink_maps_to_its_code(palette):
+    for i, rgb in enumerate(dither.PALETTES[palette]):
+        frame = dither.dither(Image.new("RGB", (30, 40), rgb), palette)
         assert set(nibbles(frame)) == {dither.CODES[i]}
+
+
+def test_default_palette_is_bpc80():
+    assert dither.DEFAULT_PALETTE == "bpc80"
 
 
 def test_chart_layout_matches_firmware():

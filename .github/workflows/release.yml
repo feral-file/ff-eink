@@ -56,6 +56,13 @@ jobs:
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
           mkdir -p out/full
+          # Licence obligations of the binary (THIRD_PARTY_NOTICES.md,
+          # "Firmware binaries"): licences and copyright holders of every
+          # component in the image, plus an SPDX SBOM, from the build.
+          . "$IDF_PATH/export.sh"
+          pip install --quiet "esp-idf-sbom==0.21.1"
+          esp-idf-sbom license -u -p build/project_description.json -o out/FIRMWARE_LICENSES.txt
+          esp-idf-sbom create build/project_description.json --output-file "out/ff-eink-${tag}.spdx"
           cp build/ff-eink.bin "out/ff-eink-${tag}.bin"
           # Keep build/'s subdirectories: flash_args refers to them by path.
           ( cd build && cp --parents bootloader/bootloader.bin partition_table/partition-table.bin \
@@ -63,7 +70,18 @@ jobs:
           ( cd out && mv full "ff-eink-${tag}-full" && \
               python3 -m zipfile -c "ff-eink-${tag}-full.zip" "ff-eink-${tag}-full" && \
               rm -r "ff-eink-${tag}-full" )
-          cp pusher/panelctl.py pusher/dither.py pusher/push.py docs/UPDATING.txt out/
+          cp pusher/panelctl.py pusher/dither.py pusher/push.py docs/UPDATING.txt \
+             LICENSE THIRD_PARTY_NOTICES.md out/
+          cp -r LICENSES out/LICENSES
+          # The tool only reads SPDX tags; these linked libraries carry their
+          # notices in their own files instead (THIRD_PARTY_NOTICES.md).
+          mkdir -p out/LICENSES/upstream
+          cp "$IDF_PATH/components/json/cJSON/LICENSE"         out/LICENSES/upstream/cJSON-LICENSE
+          cp "$IDF_PATH/components/http_parser/LICENSE.txt"     out/LICENSES/upstream/http_parser-LICENSE.txt
+          cp "$IDF_PATH/components/lwip/lwip/COPYING"           out/LICENSES/upstream/lwip-COPYING
+          cp "$IDF_PATH/components/mbedtls/mbedtls/LICENSE"     out/LICENSES/upstream/mbedtls-LICENSE
+          cp "$IDF_PATH/components/newlib/COPYING.NEWLIB"       out/LICENSES/upstream/newlib-COPYING.NEWLIB
+          ( cd out && python3 -m zipfile -c licenses.zip LICENSES FIRMWARE_LICENSES.txt && rm -r LICENSES )
           ( cd out && sha256sum * > SHA256SUMS )
       - uses: actions/upload-artifact@v4
         with:

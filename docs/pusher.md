@@ -21,7 +21,15 @@ For each input image, `dither.py`:
 
 It writes one `<name>.bin` per input. With `--preview` it also writes `<name>.preview.png`, which shows the result in the panel's inks.
 
-`--palette bpc80` selects a brighter, lossy ink set. The default is `d65`. The colours are measured values from Frans-Willem/epd-dither; only the numbers are used.
+**Palette.** `--palette` picks the ink colours the image is dithered against. The panel's inks never change; the palette changes which ink each dot gets. Sources and licences: [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+
+| `--palette` | What it is | On the panel |
+|---|---|---|
+| **`bpc80`** (default) | spectrophotometer-measured inks, 80 % black-point compensation (Frans-Willem/epd-dither) | best on the reference panel: clean, deep blacks, shadow detail kept |
+| `aitjcize` | the default palette of aitjcize/esp32-photoframe (its own pipeline adds an S-curve and saturation; only the palette is used here) | compared on the panel, see docs/bench.md |
+| `epdoptimize` | the `spectra6` palette of paperlesspaper/epdoptimize | compared on the panel, see docs/bench.md |
+
+Pick per image or per series rather than switching automatically, so similar images render alike. Judge on the panel: `--preview` draws with the palette's own colours, so the bpc sets look more vivid on screen than on the panel.
 
 ## `push.py`: push frames on a schedule (reference pusher and soak harness)
 

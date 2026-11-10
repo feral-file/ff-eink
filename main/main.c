@@ -35,6 +35,7 @@
 #include <string.h>
 
 #include "driver/gpio.h"
+#include "esp_flash.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -45,6 +46,7 @@
 #include "nvs_flash.h"
 
 #include "api.h"
+#include "frame.h"
 #include "identity.h"
 #include "ota.h"
 #include "restart.h"
@@ -150,11 +152,38 @@ static void boot_counters(void)
 
 
 #if CONFIG_FF_EINK_BENCH_PATTERNS
+/*
+ * Bench build only: show a frame written over USB, no network needed.
+ * BENCH_FRAME_ADDR is the first byte after ota_1 (partitions.csv), in
+ * flash no partition uses. Write a dither.py .bin there with
+ *   esptool.py write_flash 0x620000 photo.bin
+ * Erased flash reads 0xFF, which is not a colour nibble, so an empty region
+ * fails frame_first_invalid() and the test patterns show instead; erase the
+ * region (erase_region 0x620000 0xEB000) to go back to them.
+ */
+#define BENCH_FRAME_ADDR 0x620000
+
+static bool bench_show_flash_frame(void)
+{
+    uint8_t *fb = panel_claim(); /* just booted: always idle */
+    if (esp_flash_read(NULL, fb, BENCH_FRAME_ADDR, FRAME_BYTES) != ESP_OK
+        || frame_first_invalid(fb, FRAME_BYTES) != FRAME_BYTES) {
+        panel_abort();
+        return false;
+    }
+    panel_submit(0);
+    ESP_LOGW(TAG, "bench build: showing the frame stored at 0x%x", BENCH_FRAME_ADDR);
+    return true;
+}
+
 /* Bench build (gate G1): each boot shows the next generated pattern, so
  * a restart (SW8, or a replug) steps chart -> bars -> checker without any
  * network. The index survives the reset in NVS. Seq 0 marks a local pattern. */
 static void bench_show_next_pattern(void)
 {
+    if (bench_show_flash_frame()) {
+        return;
+    }
     uint8_t idx = 0;
     nvs_handle_t h;
     bool nvs_ok = nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK;

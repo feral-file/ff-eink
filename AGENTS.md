@@ -20,7 +20,7 @@ This file is navigation only. The facts live in `docs/`. Read the doc for your t
 6. **Code and docs change in the same commit.** When behaviour changes, update the doc that describes it (see the task table). README stays an introduction plus navigation; details belong in `docs/`.
 7. **Open-source project.** Docs must make sense to an outside contributor:
    - no organisation-internal names, links, dates or local paths;
-   - no code copied from GPL or AGPL sources, or from the unlicensed vendor example (README, "Licence and sources").
+   - no code copied from GPL or AGPL sources, or from the unlicensed vendor example (THIRD_PARTY_NOTICES.md); record any new third-party data or code there.
 
 ## Where to look
 

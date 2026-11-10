@@ -36,7 +36,7 @@ idf.py -B build-bench -D SDKCONFIG=build-bench/sdkconfig \
 | Build | What it does |
 |---|---|
 | **Normal** | Waits through a 60 s flash grace window, then starts USB host and the network, then serves the [API](api.md). |
-| **Bench** (`CONFIG_FF_EINK_BENCH_PATTERNS`) | Never starts USB host or the network. Each boot shows the next test pattern: chart → bars → checker. Press SW8, or replug, to step to the next one. |
+| **Bench** (`CONFIG_FF_EINK_BENCH_PATTERNS`) | Never starts USB host or the network. Each boot shows the next test pattern: chart → bars → checker; press SW8, or replug, to step. If a valid frame is stored at flash `0x620000`, it shows that instead ([bench.md](bench.md#showing-an-image-without-a-network-bench-build)). |
 
 **Flash layout** (`partitions.csv`):
 - `nvs` sits at 0x9000 and is 24 KB. It **never moves**, because it holds the panel's name.
