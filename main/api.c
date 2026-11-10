@@ -10,19 +10,21 @@
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 #include "esp_netif_ip_addr.h"
 #include "esp_timer.h"
 
 #include "frame.h"
 #include "identity.h"
 #include "net.h"
+#include "ota.h"
 #include "panel.h"
+#include "restart.h"
 
 static const char *TAG = "api";
 
-#define FW_VERSION "0.1.0-spike"
 
-/* Whole-body deadline. A frame takes ~1 s at USB Full Speed; each recv may
+/* Whole-body deadline. A frame takes ~1-2 s at USB Full Speed (estimate); each recv may
  * wait recv_wait_timeout (2 s), so a stalled client costs at most ~12 s of
  * the single httpd task before the socket is closed. */
 #define BODY_DEADLINE_US (10 * 1000 * 1000)
@@ -81,7 +83,7 @@ static esp_err_t status_get(httpd_req_t *req)
 
     char body[1152];
     snprintf(body, sizeof(body),
-             "{\"name\":\"%s\",\"hw_id\":\"%s\",\"fw\":\"%s\",\"uptime_s\":%" PRId64 ",\"boot_count\":%" PRIu32
+             "{\"name\":\"%s\",\"hw_id\":\"%s\",\"fw\":\"%s\",\"ota_state\":\"%s\",\"rolled_back\":%s,\"uptime_s\":%" PRId64 ",\"boot_count\":%" PRIu32
              ",\"reset_reason\":\"%s\",\"restart_cause\":\"%s\",\"brownouts\":%" PRIu32
              ",\"state\":\"%s\",\"last_seq\":%" PRIu32 ",\"accepted_seq\":%" PRIu32
              ",\"frames_accepted\":%" PRIu32 ",\"frames_rejected\":%" PRIu32
@@ -92,7 +94,8 @@ static esp_err_t status_get(httpd_req_t *req)
              ",\"mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"usb\":\"%04x:%04x\""
              ",\"usb_configs\":%u,\"link_downs\":%" PRIu32 ",\"ip_acquired\":%" PRIu32
              ",\"heap_internal_free\":%u,\"heap_internal_min\":%u,\"psram_free\":%u}",
-             name, identity_hw_id(), FW_VERSION, now / 1000000, s_boot->boot_count, s_boot->reset_reason,
+             name, identity_hw_id(), ota_version(), ota_state(),
+             ota_rolled_back() ? "true" : "false", now / 1000000, s_boot->boot_count, s_boot->reset_reason,
              s_boot->restart_cause, s_boot->brownouts, state_name(p.state), p.last_seq,
              atomic_load(&s_accepted_seq), atomic_load(&s_frames_accepted),
              atomic_load(&s_frames_rejected), p.frames_shown, p.panel_errors, p.last_error,
@@ -247,11 +250,99 @@ static esp_err_t config_put(httpd_req_t *req)
     return config_reply(req);
 }
 
+/*
+ * POST /api/v1/firmware: an app image (build/ff-eink.bin) into the inactive
+ * OTA slot (docs/ota.md). Single-flight with frames through panel_claim():
+ * the frame buffer is not touched, the claim only holds the state, so
+ * frames get 429 during an upload and an upload gets 429 during a refresh.
+ * esp_ota_end checks the image header, chip, appended SHA-256 and signature
+ * (CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT); a corrupt, truncated or
+ * foreign-signed image never becomes bootable. The restart waits for the
+ * panel to be idle; the new image then has to prove itself (ota.c) or the
+ * bootloader returns to this one.
+ */
+#define FW_DEADLINE_US (60 * 1000 * 1000)
+#define FW_CHUNK 4096
+static esp_err_t firmware_post(httpd_req_t *req)
+{
+    const esp_partition_t *slot = esp_ota_get_next_update_partition(NULL);
+    if (!slot || req->content_len == 0 || req->content_len > slot->size) {
+        reply_code(req, "400 Bad Request", "length");
+        return ESP_FAIL;
+    }
+    if (!panel_claim()) {
+        reply_code(req, "429 Too Many Requests", "busy");
+        return ESP_FAIL; /* do not purge up to 3 MB on the single httpd task */
+    }
+    static char buf[FW_CHUNK]; /* httpd runs handlers on one task */
+    esp_ota_handle_t h;
+    esp_err_t err = esp_ota_begin(slot, req->content_len, &h);
+    if (err != ESP_OK) {
+        panel_abort();
+        ESP_LOGE(TAG, "ota begin: %s", esp_err_to_name(err));
+        reply_code(req, "500 Internal Server Error", "storage");
+        return ESP_FAIL;
+    }
+    int64_t t0 = esp_timer_get_time();
+    size_t got = 0;
+    while (got < req->content_len && err == ESP_OK) {
+        if (esp_timer_get_time() - t0 > FW_DEADLINE_US) {
+            err = ESP_ERR_TIMEOUT;
+            break;
+        }
+        int n = httpd_req_recv(req, buf, MIN(req->content_len - got, FW_CHUNK));
+        if (n == HTTPD_SOCK_ERR_TIMEOUT) {
+            continue;
+        }
+        if (n <= 0) {
+            err = ESP_FAIL;
+            break;
+        }
+        err = esp_ota_write(h, buf, n);
+        got += (size_t)n;
+    }
+    if (err != ESP_OK) {
+        esp_ota_abort(h);
+        panel_abort();
+        ESP_LOGW(TAG, "firmware upload failed after %u B: %s", (unsigned)got, esp_err_to_name(err));
+        if (err == ESP_ERR_OTA_VALIDATE_FAILED) {
+            /* esp_ota_write refuses a body that does not start with the
+             * image magic: the data is not an app image at all. */
+            reply_code(req, "422 Unprocessable Entity", "image");
+        } else {
+            reply_code(req, "400 Bad Request", "body");
+        }
+        return ESP_FAIL;
+    }
+    err = esp_ota_end(h);
+    if (err == ESP_OK) {
+        err = esp_ota_set_boot_partition(slot);
+    }
+    if (err != ESP_OK) {
+        panel_abort();
+        ESP_LOGW(TAG, "firmware image refused: %s", esp_err_to_name(err));
+        return reply_code(req, "422 Unprocessable Entity", "image");
+    }
+    esp_app_desc_t desc;
+    esp_ota_get_partition_description(slot, &desc);
+    ESP_LOGW(TAG, "firmware %s written to %s in %lld ms; restarting when idle", desc.version,
+             slot->label, (esp_timer_get_time() - t0) / 1000);
+    char body[64];
+    snprintf(body, sizeof(body), "{\"version\":\"%.32s\"}", desc.version);
+    reply(req, "202 Accepted", body);
+    panel_abort();
+    restart_when_idle_async("ota");
+    return ESP_OK;
+}
+
 esp_err_t api_start(const api_boot_info_t *boot)
 {
     s_boot = boot;
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
-    cfg.stack_size = 6144;
+    /* 10 KB: esp_ota_end and esp_ota_set_boot_partition each verify the
+     * image, signature included (sig block, mbedtls RSA contexts), on this
+     * task's stack; frames alone would need about 6 KB. */
+    cfg.stack_size = 10240;
     cfg.recv_wait_timeout = 2;
     cfg.send_wait_timeout = 5;
     cfg.max_open_sockets = 4;
@@ -274,5 +365,8 @@ esp_err_t api_start(const api_boot_info_t *boot)
     httpd_register_uri_handler(server, &frame);
     httpd_register_uri_handler(server, &cfg_get);
     httpd_register_uri_handler(server, &cfg_put);
+    static const httpd_uri_t fw_post = {
+        .uri = "/api/v1/firmware", .method = HTTP_POST, .handler = firmware_post};
+    httpd_register_uri_handler(server, &fw_post);
     return ESP_OK;
 }

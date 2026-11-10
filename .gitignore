@@ -8,3 +8,5 @@ __pycache__/
 .pytest_cache/
 pusher/out/
 frame_test
+# Signing keys never go in git (docs/ota.md)
+*.pem

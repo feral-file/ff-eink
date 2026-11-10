@@ -65,7 +65,8 @@ static const char *TAG = "panel";
 #define CHUNK_BYTES (ROWS_PER_CHUNK * FRAME_HALF_ROW_BYTES)
 _Static_assert(FRAME_H % ROWS_PER_CHUNK == 0, "chunks must tile the frame");
 
-/* BUSY caps. DRF is the long one: ~19 s warm, ~47 s seen on a cold panel. */
+/* BUSY caps. DRF is the long one: ~26 s at room temperature (bench G1),
+ * ~47 s reported on a cold panel. All caps together bound a frame at ~3 min. */
 #define RESET_BUSY_MS 2000
 #define PON_POF_BUSY_MS 30000
 #define DRF_ASSERT_MS 1000

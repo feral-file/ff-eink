@@ -46,6 +46,8 @@
 
 #include "api.h"
 #include "identity.h"
+#include "ota.h"
+#include "restart.h"
 #include "net.h"
 #include "panel.h"
 #include "patterns.h"
@@ -146,17 +148,6 @@ static void boot_counters(void)
              (unsigned long)brownouts);
 }
 
-static void restart_with_cause(const char *cause)
-{
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_set_str(h, "rcause", cause);
-        nvs_commit(h);
-        nvs_close(h);
-    }
-    ESP_LOGE(TAG, "restarting: %s", cause);
-    esp_restart();
-}
 
 #if CONFIG_FF_EINK_BENCH_PATTERNS
 /* Bench build (gate G1): each boot shows the next generated pattern, so
@@ -208,7 +199,7 @@ static bool reset_key_held(int ms)
 /*
  * SW8 as the board's reset key: a press restarts the chip on RELEASE, and
  * only once the panel is idle, so a press mid-refresh never cuts a waveform
- * (the restart waits up to ~2 min, panel.c's caps). Restarting on release,
+ * (the restart waits up to ~3 min, panel.c's caps). Restarting on release,
  * not on press, matters: a press still held when the next boot samples the
  * key would otherwise drop the device into maintenance (offline). The key
  * only arms after it has been seen released, so holding it through boot
@@ -230,14 +221,7 @@ static void reset_key_task(void *arg)
         while (gpio_get_level(PIN_RESET_KEY) == 0) {
             vTaskDelay(pdMS_TO_TICKS(10));
         }
-        for (;;) {
-            panel_status_t p;
-            panel_get_status(&p);
-            if (p.state == PANEL_IDLE) {
-                restart_with_cause(RESTART_RESET_KEY);
-            }
-            vTaskDelay(pdMS_TO_TICKS(100));
-        }
+        restart_when_idle(RESTART_RESET_KEY);
     }
 }
 
@@ -256,13 +240,7 @@ static void link_watchdog(void)
         if (now - last_ip < LINK_WATCHDOG_US) {
             continue;
         }
-        /* Never cut a refresh short: an interrupted waveform leaves the panel
-         * in an undefined state. A refresh ends within ~2 min (panel.c caps). */
-        panel_status_t p;
-        panel_get_status(&p);
-        if (p.state == PANEL_IDLE) {
-            restart_with_cause(RESTART_LINK_WATCHDOG);
-        }
+        restart_when_idle(RESTART_LINK_WATCHDOG);
     }
 }
 
@@ -313,5 +291,6 @@ void app_main(void)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP server failed: %s", esp_err_to_name(err));
     }
+    ota_start_validation(err == ESP_OK);
     link_watchdog();
 }

@@ -31,7 +31,7 @@ Request:
 - Body: the frame.
 
 The device validates the frame, replies at once, and then refreshes the panel
-in the background, which takes about 19 s warm and up to about 47 s cold.
+in the background, which takes about 26 s at room temperature and up to about 47 s cold.
 
 | Status | Body | Meaning | Connection |
 |---|---|---|---|
@@ -48,8 +48,13 @@ in the background, which takes about 19 s warm and up to about 47 s cold.
 Single-flight: the device holds one frame. While `state` is not `idle`, every
 POST gets 429. Nothing is queued.
 
-The HTTP server is a single task. While a frame uploads (about 1 s at USB
-Full Speed), status requests wait.
+The HTTP server is a single task. While a frame (about 1–2 s at USB Full
+Speed, estimate) or a firmware image uploads, other requests, status
+included, wait.
+
+**Connections.** At most 4 sockets are kept; the least recently used one is
+closed when a fifth arrives. Unknown paths return 404, wrong methods 405.
+Every reply is `application/json` with `Cache-Control: no-store`.
 
 ## `GET /api/v1/status`
 
@@ -59,21 +64,23 @@ The response is built from cached counters and never waits on the panel.
 |---|---|
 | `name` | the panel's wall-position name (see `/api/v1/config`); also its DHCP hostname |
 | `hw_id` | the chip's factory MAC, 12 hex; never changes for a board |
-| `fw` | firmware version |
+| `fw` | firmware version (`git describe` of the build; the release tag) |
+| `ota_state` | `valid`, or `pending` while a freshly updated image proves itself (docs/ota.md); `unknown` only for a moment at start-up |
+| `rolled_back` | `true` if an updated image failed to prove itself (crash, restart, power loss or no IP before it was marked valid) and the panel went back to the previous image; read once at boot, stays `true` until the next successful update. Also `true` (harmlessly) after an upload that was interrupted |
 | `uptime_s` | seconds since boot |
-| `boot_count` | boots since flashing (NVS) |
+| `boot_count` | boots since NVS was last erased (survives reflashing and updates) |
 | `reset_reason` | this boot's reset reason: `POWERON`, `SW`, `PANIC`, `TASK_WDT`, `BROWNOUT`, … |
-| `restart_cause` | why the firmware restarted itself before this boot: `link_watchdog`, `panel_init`, `reset_key` (SW8), or `""` |
-| `brownouts` | brownout resets since flashing (NVS) |
+| `restart_cause` | why the firmware restarted itself before this boot: `link_watchdog`, `panel_init`, `reset_key` (SW8), `ota`, or `""`. An OTA rollback and a failed panel SPI re-init restart without a cause (`""`, `reset_reason: SW`) |
+| `brownouts` | brownout resets since NVS was last erased |
 | `state` | `idle`, `receiving` or `refreshing` |
-| `last_seq` | seq of the last frame shown successfully; `0` = a bench-build test pattern |
+| `last_seq` | seq of the last frame shown successfully; `0` until a frame has been shown this boot |
 | `accepted_seq` | seq of the last frame accepted |
 | `frames_accepted`, `frames_rejected`, `frames_shown` | counters since boot |
 | `panel_errors` | failed refreshes since boot |
 | `last_error`, `last_error_seq` | last panel failure (see below) and the seq it hit |
-| `last_upload_ms`, `last_refresh_ms`, `last_frame_ms` | last upload; last DRF-to-done time; last reset-to-sleep time |
+| `last_upload_ms`, `last_refresh_ms`, `last_frame_ms` | last frame upload; last DRF-to-done time; last reset-to-sleep time |
 | `last_shown_age_s` | seconds since a frame was last shown; `-1` if none this boot |
-| `link_up`, `ip`, `mac` | NIC link, DHCP address, the NIC's own MAC |
+| `link_up`, `ip`, `mac` | NIC link, DHCP address, the NIC's own MAC (zeros while the link is down) |
 | `usb`, `usb_configs` | last USB device seen (`vid:pid`) and its configuration count |
 | `link_downs`, `ip_acquired` | link-down transitions and DHCP leases since boot |
 | `heap_internal_free`, `heap_internal_min`, `psram_free` | memory, bytes |
@@ -115,12 +122,44 @@ a typo cannot look like success.
 |---|---|---|
 | `200` | `{"name":"…","hw_id":"…"}` | saved (also the `GET` response) |
 | `400` | `{"error":"length"}` | body empty or over 128 bytes (connection closed) |
-| `400` | `{"error":"body"}` | not a JSON object with exactly one string `name` |
+| `400` | `{"error":"body"}` | not a JSON object with exactly one string `name`; or the body broke off (then the connection is closed) |
 | `422` | `{"error":"name"}` | the name breaks the rules above |
 | `500` | `{"error":"storage"}` | NVS write failed; nothing changed |
 
 Swapping a spare in: give the spare the dead panel's name. `hw_id` is how
 inventory and RMA tell the two physical units apart.
+
+## `POST /api/v1/firmware`
+
+Installs a signed app image (`ff-eink-<version>.bin` from a release) in the
+inactive OTA slot. Use `pusher/panelctl.py update`, which also sequences the
+rollout. Design: docs/ota.md.
+
+- `Content-Length` exact, at most one slot (3 MB). Body: the image.
+- Single-flight with frames: refused while a frame uploads or refreshes;
+  frames are refused while it uploads (`state` shows `receiving`).
+- The image must carry a valid signature from the key of the running image,
+  and pass ESP-IDF's header, chip and SHA-256 checks.
+
+| Status | Body | Meaning | Connection |
+|---|---|---|---|
+| `202` | `{"version":"…"}` | written; the panel restarts once idle (`restart_cause: ota`) | kept |
+| `400` | `{"error":"length"}` | missing or too large | **closed** |
+| `400` | `{"error":"body"}` | upload broke off, exceeded 60 s, or writing the slot failed | **closed** |
+| `422` | `{"error":"image"}` | not an app image, or an image that fails the header, chip, SHA-256 or **signature** check; nothing changed | kept, or **closed** when refused at the first bytes |
+| `429` | `{"error":"busy"}` | a frame is uploading or refreshing | **closed** |
+| `500` | `{"error":"storage"}` | could not start writing the slot | **closed** |
+
+On the "closed" rows the panel closes the connection without reading the
+rest of the body, so a client still sending may see a connection reset
+instead of the JSON body. Check `state == "idle"` before uploading (the
+updater does).
+
+After the restart the new image is `ota_state: pending` and becomes `valid`
+after holding an IP continuously for 60 s with the API up. If it has no IP
+10 min after the network starts (~11 min after boot), or if it crashes or
+loses power first, the panel returns to the previous
+image (`rolled_back: true`).
 
 ## Device-side recovery
 
@@ -129,12 +168,15 @@ inventory and RMA tell the two physical units apart.
 | No IP for 10 min | restart once the panel is idle (`restart_cause: link_watchdog`) |
 | Panel init fails at boot | restart after 10 s (`restart_cause: panel_init`) |
 | SW8 pressed | restart once the panel is idle (`restart_cause: reset_key`) |
+| Firmware accepted | restart once the panel is idle (`restart_cause: ota`) |
+| Updated image has no IP 10 min after the network starts (~11 min after boot), or crashes/restarts before it is valid | back to the previous image (`rolled_back: true`) |
 | Panel error | power-cycle the panel through IO45 (power removal unverified) |
+| Panel SPI bus cannot be re-initialised after an error | immediate restart (`restart_cause: ""`) |
 
 ## Misses
 
 The pusher sends one frame per tick, 60 s by default. A frame not shown
-before the tick ends (interval − 2 s) is a **miss**. Every miss gets exactly
+before the tick ends (interval − 2 s at the default 60 s) is a **miss**. Every miss gets exactly
 one cause, and the first rule that matches wins:
 
 | Order | Cause | Evidence |

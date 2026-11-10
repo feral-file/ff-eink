@@ -7,8 +7,9 @@
  *   - 1600 rows x 600 bytes = 960,000 bytes, row-major, top row first.
  *   - 4 bpp, two pixels per byte, the even-x pixel in the high nibble.
  *   - Nibble codes: K 0x0, W 0x1, Y 0x2, R 0x3, B 0x5, G 0x6. 0x4 and 0x7 are
- *     not colours (the vendor code never sends them), so a frame carrying
- *     them is rejected rather than shown as undefined ink.
+ *     not colours (the vendor code never sends them), nor is anything in
+ *     0x8-0xF, so a frame carrying them is rejected rather than shown as
+ *     undefined ink.
  *   - Two controller ICs: bytes 0..299 of each row (left 600 px) go to the
  *     master (CS_M), bytes 300..599 (right 600 px) to the slave (CS_S).
  *

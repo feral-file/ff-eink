@@ -1,0 +1,40 @@
+ff-eink: updating the panels' firmware
+=======================================
+
+You need: a laptop on the panels' network (the panel VLAN), Python 3.9 or
+newer, and the files from this release (USB stick or GitHub Release):
+panelctl.py, ff-eink-<version>.bin, SHA256SUMS.
+
+Python 3
+  macOS:   open Terminal, type  python3 --version . If macOS offers to
+           install the command line tools, accept, then try again.
+  Windows: install Python 3 from https://www.python.org/downloads/ and tick
+           "Add python.exe to PATH". Then use  py  instead of  python3 .
+
+1. Check the files are intact (optional):
+     macOS:   shasum -a 256 -c --ignore-missing SHA256SUMS
+     Windows: certutil -hashfile ff-eink-<version>.bin SHA256
+              and compare with the line in SHA256SUMS
+
+2. See every panel (replace the network with the panels' one):
+     python3 panelctl.py scan 10.20.0.0/24
+   If it reports DUPLICATE NAMES, stop and contact whoever supplied the
+   panels: two panels claim the same wall position.
+
+3. Update them all:
+     python3 panelctl.py update --image ff-eink-<version>.bin 10.20.0.0/24
+
+   One panel is updated first as a test; if it fails, nothing else is
+   touched. Then the others go five at a time. Each panel waits until its
+   picture has finished refreshing, restarts, and must prove the new
+   firmware works for a minute, otherwise it returns to the old firmware by
+   itself. The test panel is updated twice (the second time proves the new
+   firmware can take future updates): about 5 minutes. All 55 panels take
+   about 30 minutes. A screen may stay on its last picture during the update.
+
+4. Read the result table (also saved as update-report.csv). Any line that
+   says "failed": run the same command again later; it only retries what is
+   left. If a panel keeps failing, note its name and contact whoever supplied the panels.
+
+Do not unplug panels during an update. If one loses power anyway, it starts
+on the firmware it had before; run the update again.

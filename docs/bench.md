@@ -1,8 +1,9 @@
-# Bench procedure and results
+# Bench procedures and results
 
-Spike goal (feral-file/feral-file#3594): a laptop pushes a pre-dithered
-1200×1600 frame over the network to the Good Display kit, and it shows,
-sustained once a minute for 24 h.
+Hardware test procedures for one board, and the results recorded on the
+reference bench unit. The end goal they build up to: a laptop pushes a
+pre-dithered 1200×1600 frame over the network, and it shows, sustained once
+a minute for 24 h.
 
 ## Topology
 
@@ -31,68 +32,27 @@ ioreg -p IOUSB -l -w0 | grep -E 'idVendor|idProduct|bNumConfigurations|bInterfac
 | `bNumConfigurations` ≥ 2 | needed: the firmware selects configuration 2 (CDC-ECM) |
 
 macOS shows only the active configuration's interfaces; class 2 / subclass 6
-(ECM) in configuration 2 is confirmed on the board (`usb_configs` and
+(ECM) in configuration 2 is to be confirmed on the board (`usb_configs` and
 `link_up` in the status).
 
 | Date | Adapter | VID:PID | bcdDevice | Configurations | Notes |
 |---|---|---|---|---|---|
 | | | | | | |
 
-## 1. Back up the factory firmware (once, with approval)
+## 1. Back up the factory firmware (once, before the first flash)
 
 ```sh
-esptool.py -p /dev/cu.usbmodem1101 read_flash 0 0x1000000 ~/esp/work/backup/factory-44b176cb0cb4.bin
+esptool.py -p /dev/cu.usbmodem1101 --after no_reset read_flash 0 0x1000000 factory-<board-mac>.bin
+esptool.py -p /dev/cu.usbmodem1101 --before no_reset --after no_reset verify_flash 0 factory-<board-mac>.bin
 ```
 
 Restore: `esptool.py -p /dev/cu.usbmodem1101 write_flash 0 <that file>`.
 
 ## 2. Buttons and the way back to flashing
 
-Source for buttons and pins: Good Display's **Chinese** manual
-《ESP32-133C02-IL 驱动开发板说明书》 §3.1–3.6 (good-display.cn), confirmed on the
-bench board. The English specification rev 2.0 §3.1 ("SW2–SW4 on IO12–14,
-triggered by a high level") is wrong.
-
-| Button | Wiring | What it does with this firmware |
-|---|---|---|
-| **SW8** "复位按键" (reset key) | GPIO12, low while pressed. **Not** the chip's EN pin | press: restart on release, once the panel is idle; held ≥ 1 s while powering up: **maintenance mode** |
-| **SW7** "电源按键" (power key) | IP5306 battery boost key (manual: IO13) | nothing on USB power |
-
-There is no BOOT button, and no button reaches EN, so a **hard** restart is
-unplugging and replugging the USB-C cable at the board (USB is its only
-power source). Never replug while the panel is refreshing.
-
-Measured 2026-11-10 (passive USB re-enumeration watch plus a GPIO watch in
-the bench build): SW8 drove GPIO12 1→0→1 on each press and never reset the
-chip, even held 10 s; SW7 changed no watched GPIO and did not reset it.
-
-Open pin questions for Good Display (the Chinese manual conflicts with
-other sources; nothing here blocks the spike):
-
-- **IO45**: manual §3.4 says power LED, low = on; the 2026-04-20 example
-  drives it as the panel load switch (TPS22913B). Bench: IO45 high and the
-  panel works. **Unverified: that IO45 low removes panel power.** If it does
-  not, the firmware's post-error "power-cycle" is only a reset plus re-init
-  (harmless, but not a power cycle). Check once: panel VCI with IO45 low.
-- **IO48**: manual §3.6 says "LDO EN, high = enable", without naming the
-  rail. This firmware leaves IO48 an input; board and panel work.
-- **IO12**: manual lists it both as the reset key and as IP5306 I2C SCL
-  (SDA IO11). This firmware never talks to the IP5306.
-
-- **Bench build** (G1): never starts USB host, so flashing works at any time.
-- **Normal build**: the USB-C port turns into a USB host port 60 s after each
-  boot, and the port disappears from the Mac. Two ways back:
-  - **Maintenance mode:** hold SW8 while plugging in USB-C, for at least
-    1 s. The log shows `maintenance mode (SW8 held at boot)`; flash at leisure.
-  - **Grace window:** build first, replug, and run the esptool line within
-    60 s. Do not use `idf.py flash` here: it rebuilds before connecting and
-    can miss the window.
-
-```sh
-idf.py build                       # build FIRST: idf.py flash would rebuild inside the window
-cd build && python -m esptool --chip esp32s3 -p /dev/cu.usbmodem1101 -b 460800 \
-    --before default_reset --after hard_reset write_flash @flash_args
-```
+Buttons, pins and their measurement: [hardware.md](hardware.md#buttons).
+Flashing, maintenance mode (hold SW8 ≥ 1 s while plugging in) and the 60 s
+grace window: [development.md](development.md#flashing-and-the-way-back).
 
 ## G1: panel from our driver, USB power only
 
@@ -105,7 +65,7 @@ idf.py -B build-bench -D SDKCONFIG=build-bench/sdkconfig -D SDKCONFIG_DEFAULTS="
 Each boot shows the next pattern, so **press SW8** (or replug) to step:
 chart → bars → checker → chart. SW8 waits for the refresh to finish before
 restarting. A replug does not: before replugging, wait for the log line
-`frame seq=0 shown` (about 26 s at room temperature, up to ~50 s cold).
+`frame seq=0 shown` (about 26 s at room temperature, up to about 47 s cold).
 Photograph each pattern.
 
 | Check | Expected |
@@ -113,22 +73,22 @@ Photograph each pattern.
 | Chart corners | black top-left, red top-right, blue bottom-left, empty bottom-right |
 | Chart bars, left to right | black, white, yellow, red, blue, green; red begins exactly at the centre seam |
 | Border | 2 px black on all four sides |
-| Log | `refresh` ≈ 12–20 s at room temperature, no `failed` |
+| Log | `refresh` ≈ 26 s at room temperature (datasheet: 12 s typical), no `failed` |
 
 If the chart is mirrored, rotated or its halves swapped, record which, then
 fix it in the firmware's send path (`main/panel.c`), so the wire format in
 docs/api.md stays as specified.
 
-| Date | Pattern | Result | refresh_ms | Photo |
-|---|---|---|---|---|
-| 2026-11-10 | chart | pass: corners, bar order, centre seam all correct; no mirror, halves not swapped | 26023 | `~/esp/work/bench-logs/2026-11-10-g1-chart.jpg` |
-| 2026-11-10 | bars | pass | 26020 | `…-g1-bars.jpg` |
-| 2026-11-10 | checker | pass: diagonals continuous across the seam | 25986 | `…-g1-checker.jpg` |
+| Date | Pattern | Result | refresh_ms |
+|---|---|---|---|
+| 2026-11-10 | chart | pass: corners, bar order, centre seam all correct; no mirror, halves not swapped | 26023 |
+| 2026-11-10 | bars | pass | 26020 |
+| 2026-11-10 | checker | pass: diagonals continuous across the seam | 25986 |
 
 Orientation: the frame's top edge is the edge **opposite the FPC**; view the
 panel portrait with the FPC at the bottom. The wire format needs no change.
-Bench build at ff-eink `f031a53` + pin watch; factory image backed up and a
-restore drill passed first (`2026-11-10-g1-bench.log`, `…-efuse-summary.txt`).
+Reference unit: bench build at `f031a53` (plus a temporary GPIO watch, since removed; see [hardware.md](hardware.md#buttons)); the
+factory image was backed up and a restore drill passed first.
 
 Before moving on, flash the normal build once on the Mac cable and check the
 way back: `idf.py -p /dev/cu.usbmodem1101 flash monitor`; the log shows
@@ -139,6 +99,14 @@ while replugging, confirm `maintenance mode` in the log and that
 without touching SW8, on the Mac and later on the PoE adapter: the boot line
 `SW8 (GPIO12) at boot: 1 ... -> normal` must appear every time (a false
 maintenance entry would leave the device offline).
+
+## Layout change (once per board)
+
+The two-slot layout (docs/ota.md) replaces the bootloader, partition table
+and `otadata`, so the first flash after it is a full flash over USB
+(`idf.py flash` or `write_flash @flash_args`, which include all four
+regions). `nvs` at 0x9000 is untouched. The image must be signed: a dev-key
+image on lab boards, a release `-full.zip` on anything that ships.
 
 ## Network bring-up
 
@@ -157,6 +125,26 @@ python3 pusher/push.py --host <ip> pusher/out/*.bin --count 10 --log bringup.csv
 | Date | DHCP | usb / configs | upload_ms | 10 in a row | Notes |
 |---|---|---|---|---|---|
 | | | | | | |
+
+## OTA checks (before G6, so the soak runs the shipping image)
+
+Board on the adapter, normal build, dev key. Build a second image with a
+different version (e.g. an empty commit, or `git tag v0.0.0-test`), then:
+
+| # | Do | Expect |
+|---|---|---|
+| 1 | `panelctl.py update --image build/ff-eink.bin <subnet>` | 202, restart, `ota_state` pending then `valid`, `fw` = new version |
+| 2 | POST an image signed with a **different** key (`curl --data-binary @other.bin http://<ip>/api/v1/firmware`; panelctl only checks that a signature exists) | `422 image`, no restart, `fw` unchanged |
+| 3 | POST a truncated image with `curl` (`head -c 300000 build/ff-eink.bin > cut.bin`; panelctl would refuse it locally) | `400 body` or `422 image`, `fw` unchanged |
+| 4 | Pull power during an upload | boots the old image, `fw` unchanged |
+| 5 | Update to an image that never brings the network up (e.g. `net_start` disabled) | ~11 min after the restart: back on the old image, `rolled_back: true` |
+| 6 | Run `update` again with the same image | all panels `skipped` |
+| 7 | A→B→A: update to B, then back to A, both through `update` | both succeed: the new image can take the next update (the canary's self-update automates this per release) |
+| 8 | During checks 1, 2 and 5, log `uxTaskGetStackHighWaterMark` for the httpd and `ota_valid` tasks (temporary code) | margin left of the 10 KB and 8 KB stacks |
+
+| Date | # | Result | Notes |
+|---|---|---|---|
+| | | | |
 
 ## G6: 24 h at 60 s
 
@@ -182,6 +170,6 @@ python3 pusher/push.py --host <ip> pusher/out/*.bin --count 1440 --chart-ends \
 
 ## What the kit needs that it doesn't have
 
-Record here as found (for the result comment on #3594).
+Record findings here as they come up.
 
 -

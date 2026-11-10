@@ -12,7 +12,7 @@ rule that matches wins (docs/api.md, "Misses"):
 
     deliberate_pull  the operator had the pull file present (touch it before
                      pulling a cable, remove it once the device is back)
-    reboot           boot_count changed
+    reboot           boot_count changed or uptime_s went backwards
     link_down        the device counted a link-down
     panel_error      the device counted a panel error
     slow_refresh     shown late, still refreshing at the deadline, or refused
@@ -23,7 +23,8 @@ rule that matches wins (docs/api.md, "Misses"):
 
 When the device is unreachable, misses wait in a queue until it answers
 again, because only then can its counters say what happened.
-Standard library only.
+Standard library only, except --chart-ends, which imports dither.py
+(Pillow) to draw the chart.
 """
 from __future__ import annotations
 
@@ -39,7 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import dither  # noqa: E402
+FRAME_BYTES = 960_000  # docs/api.md "Frame format"
 
 CAUSES = ("deliberate_pull", "reboot", "link_down", "panel_error", "slow_refresh", "http_error", "unattributed",
           "no_evidence")
@@ -137,9 +138,13 @@ def utc(ts: float) -> str:
 def run(args: argparse.Namespace) -> int:
     frames = [p.read_bytes() for p in args.frames]
     for p, f in zip(args.frames, frames):
-        if len(f) != dither.FRAME_BYTES:
-            sys.exit(f"{p}: {len(f)} bytes, expected {dither.FRAME_BYTES}")
-    chart = dither.chart() if args.chart_ends else None
+        if len(f) != FRAME_BYTES:
+            sys.exit(f"{p}: {len(f)} bytes, expected {FRAME_BYTES}")
+    chart = None
+    if args.chart_ends:
+        import dither  # Pillow; only needed for the chart
+
+        chart = dither.chart()
     if not frames and chart is None:
         sys.exit("no frames: give .bin files and/or --chart-ends")
 
