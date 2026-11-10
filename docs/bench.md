@@ -133,6 +133,48 @@ Notes:
   is the panel's own waveform (about 1.2 s of each frame is ours: wake,
   init, data). Expect about 28 s per pushed frame including upload.
 
+## Showing an image without a network (bench build)
+
+The bench build shows a frame stored in unused flash at `0x620000` (the
+first byte after `ota_1`) when one is there, and the test patterns
+otherwise. Erased flash is `0xFF`, which is not a colour, so an empty region
+falls back to the patterns. With the panel idle:
+
+```sh
+python3 pusher/dither.py photo.jpg -o pusher/out --preview      # check the preview first
+cd build-bench && python -m esptool --chip esp32s3 -p /dev/cu.usbmodem1101 -b 460800 \
+    --before default_reset --after no_reset write_flash \
+    0xf000 ota_data_initial.bin 0x20000 ff-eink.bin 0x620000 ../pusher/out/photo.bin
+```
+
+Then replug (or press SW8). Rewriting `ota_data_initial.bin` makes the
+board boot `ota_0` even if it took an OTA update earlier. To go back to the
+patterns: `esptool.py … erase_region 0x620000 0xEB000`.
+
+## Palette comparison
+
+Same dark, high-contrast artwork (a 9:16 photograph, centre-cropped to 3:4),
+shown with the bench build's flash-frame path, 2026-11-10:
+
+| Variant | On the panel |
+|---|---|
+| `d65` | darker areas collapse into one flat dark-blue colour |
+| `bpc80` | **best**: deep, clean blacks with detail in the shadows |
+| `d65` + per-image tone mapping (CIELAB L* stretched onto the inks) | shadow detail kept, but noisy coloured dots in the dark areas; dropped |
+
+A second round on a very light, low-contrast pastel artwork (same day):
+
+| Variant | On the panel |
+|---|---|
+| `bpc80` | **best** |
+| `aitjcize` palette only | lost light detail (its white is darker, so pale tones turn white) |
+| `epdoptimize` palette | softer, lower contrast |
+| aitjcize-style pipeline (S-curve + saturation ×1.2, approximated) | nearly blank: the curve pushes pale tones to white |
+
+Result: `bpc80` is the default; `aitjcize` and `epdoptimize` ship as
+options. `d65` (epd-dither's D65_ADJUSTED) is not shipped.
+Refresh was 25.9 s for every variant.
+
 ## Network bring-up
 
 Normal build, board on the adapter. Find the DHCP lease on the router,

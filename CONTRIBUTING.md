@@ -56,4 +56,4 @@ checks from [docs/bench.md](docs/bench.md), and the results.
 By contributing you agree your contribution is released under the MIT
 licence in [LICENSE](LICENSE). Do not paste code from incompatibly licensed
 projects. GPL and AGPL sources may inform a method, but no code may be
-copied from them (see README, "Licence and sources").
+copied from them. Record any third-party data you add in THIRD_PARTY_NOTICES.md.
