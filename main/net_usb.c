@@ -26,9 +26,12 @@
 #include "iot_usbh_ecm.h"
 #include "usb/usb_host.h"
 
+#include "identity.h"
+
 static const char *TAG = "net";
 
 static iot_eth_handle_t s_eth;
+static esp_netif_t *s_netif;
 static _Atomic bool s_link_up;
 static _Atomic bool s_has_ip;
 static _Atomic uint32_t s_ip;
@@ -158,6 +161,12 @@ esp_err_t net_start(void)
     if (!glue) {
         return ESP_ERR_NO_MEM;
     }
+    s_netif = netif;
+    /* Before the first DHCP DISCOVER, so the lease is registered under the
+     * panel's name from the start. */
+    char name[NAME_MAX_LEN + 1];
+    identity_name(name);
+    net_set_hostname(name);
     err = esp_netif_attach(netif, glue);
     if (err == ESP_OK) err = iot_eth_start(s_eth);
     return err;
@@ -178,4 +187,14 @@ void net_get_status(net_status_t *out)
     out->usb_configs = atomic_load(&s_usb_configs);
     out->link_downs = atomic_load(&s_link_downs);
     out->ip_acquired = atomic_load(&s_ip_acquired);
+}
+
+void net_set_hostname(const char *name)
+{
+    if (s_netif) {
+        esp_err_t err = esp_netif_set_hostname(s_netif, name);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "set hostname '%s': %s", name, esp_err_to_name(err));
+        }
+    }
 }

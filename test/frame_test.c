@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "frame.h"
+#include "name_rules.h"
 #include "patterns.h"
 
 static int failures;
@@ -105,6 +106,19 @@ static void test_patterns(uint8_t *f)
     CHECK(px(f, 0, 800) == PX_K && px(f, 1199, 800) == PX_K); /* border */
 }
 
+static void test_names(void)
+{
+    const char *ok[] = {"a", "lobby-r03-c07", "ffeink-cb0cb4", "0", "abcdefghijklmnopqrstuvwxyz012345"};
+    const char *bad[] = {"", "-a", "a-", "Lobby", "a_b", "a.b", "a b", "é",
+                         "abcdefghijklmnopqrstuvwxyz0123456" /* 33 */, NULL};
+    for (size_t i = 0; i < sizeof(ok) / sizeof(ok[0]); i++) {
+        CHECK(name_valid(ok[i]));
+    }
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        CHECK(!name_valid(bad[i]));
+    }
+}
+
 int main(void)
 {
     uint8_t *f = malloc(FRAME_BYTES);
@@ -115,6 +129,7 @@ int main(void)
     test_gather(f);
     test_fill_rect(f);
     test_patterns(f);
+    test_names();
     free(f);
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);

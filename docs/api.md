@@ -57,6 +57,8 @@ The response is built from cached counters and never waits on the panel.
 
 | Field | Meaning |
 |---|---|
+| `name` | the panel's wall-position name (see `/api/v1/config`); also its DHCP hostname |
+| `hw_id` | the chip's factory MAC, 12 hex; never changes for a board |
 | `fw` | firmware version |
 | `uptime_s` | seconds since boot |
 | `boot_count` | boots since flashing (NVS) |
@@ -91,6 +93,34 @@ After any panel error the device power-cycles the panel through IO45 (that
 IO45 low actually removes panel power is unverified on this board; see
 docs/bench.md §2). The next frame starts
 from a hardware reset either way.
+
+## `GET /api/v1/config`, `PUT /api/v1/config`
+
+Provisioning. Today the only setting is the panel's **name**: its
+wall-position label, e.g. `lobby-r03-c07`.
+
+- Rules: 1–32 characters of `a–z`, `0–9`, `-`, not starting or ending with
+  `-` (a lower-case DNS label, because it is also the DHCP hostname).
+- Default until set: `ffeink-` + the last 6 hex of `hw_id`.
+- Stored in NVS (0x9000, 24 KB, kept fixed by docs/ota.md): survives
+  restarts and app updates. A full flash erase, or a partition-table change
+  that moves or shrinks `nvs`, resets it.
+- The DHCP hostname follows on the next DHCP request (lease renewal or
+  reconnect); the status shows the new name at once.
+
+`PUT` body: exactly `{"name":"lobby-r03-c07"}`. Any other key is refused, so
+a typo cannot look like success.
+
+| Status | Body | Meaning |
+|---|---|---|
+| `200` | `{"name":"…","hw_id":"…"}` | saved (also the `GET` response) |
+| `400` | `{"error":"length"}` | body empty or over 128 bytes (connection closed) |
+| `400` | `{"error":"body"}` | not a JSON object with exactly one string `name` |
+| `422` | `{"error":"name"}` | the name breaks the rules above |
+| `500` | `{"error":"storage"}` | NVS write failed; nothing changed |
+
+Swapping a spare in: give the spare the dead panel's name. `hw_id` is how
+inventory and RMA tell the two physical units apart.
 
 ## Device-side recovery
 

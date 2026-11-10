@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <sys/param.h>
 
+#include "cJSON.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
@@ -13,6 +14,7 @@
 #include "esp_timer.h"
 
 #include "frame.h"
+#include "identity.h"
 #include "net.h"
 #include "panel.h"
 
@@ -49,12 +51,18 @@ static esp_err_t reply(httpd_req_t *req, const char *status, const char *json)
     return httpd_resp_sendstr(req, json);
 }
 
-static esp_err_t reply_error(httpd_req_t *req, const char *status, const char *code)
+static esp_err_t reply_code(httpd_req_t *req, const char *status, const char *code)
 {
     char body[48];
     snprintf(body, sizeof(body), "{\"error\":\"%s\"}", code);
-    atomic_fetch_add(&s_frames_rejected, 1);
     return reply(req, status, body);
+}
+
+/* A refused frame: also counted in frames_rejected. */
+static esp_err_t reply_error(httpd_req_t *req, const char *status, const char *code)
+{
+    atomic_fetch_add(&s_frames_rejected, 1);
+    return reply_code(req, status, code);
 }
 
 static esp_err_t status_get(httpd_req_t *req)
@@ -68,9 +76,12 @@ static esp_err_t status_get(httpd_req_t *req)
     long shown_age_s = p.last_shown_us ? (long)((now - p.last_shown_us) / 1000000) : -1;
     esp_ip4_addr_t ip = {.addr = n.ip};
 
-    char body[1024];
+    char name[NAME_MAX_LEN + 1];
+    identity_name(name);
+
+    char body[1152];
     snprintf(body, sizeof(body),
-             "{\"fw\":\"%s\",\"uptime_s\":%" PRId64 ",\"boot_count\":%" PRIu32
+             "{\"name\":\"%s\",\"hw_id\":\"%s\",\"fw\":\"%s\",\"uptime_s\":%" PRId64 ",\"boot_count\":%" PRIu32
              ",\"reset_reason\":\"%s\",\"restart_cause\":\"%s\",\"brownouts\":%" PRIu32
              ",\"state\":\"%s\",\"last_seq\":%" PRIu32 ",\"accepted_seq\":%" PRIu32
              ",\"frames_accepted\":%" PRIu32 ",\"frames_rejected\":%" PRIu32
@@ -81,7 +92,7 @@ static esp_err_t status_get(httpd_req_t *req)
              ",\"mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"usb\":\"%04x:%04x\""
              ",\"usb_configs\":%u,\"link_downs\":%" PRIu32 ",\"ip_acquired\":%" PRIu32
              ",\"heap_internal_free\":%u,\"heap_internal_min\":%u,\"psram_free\":%u}",
-             FW_VERSION, now / 1000000, s_boot->boot_count, s_boot->reset_reason,
+             name, identity_hw_id(), FW_VERSION, now / 1000000, s_boot->boot_count, s_boot->reset_reason,
              s_boot->restart_cause, s_boot->brownouts, state_name(p.state), p.last_seq,
              atomic_load(&s_accepted_seq), atomic_load(&s_frames_accepted),
              atomic_load(&s_frames_rejected), p.frames_shown, p.panel_errors, p.last_error,
@@ -177,6 +188,65 @@ static esp_err_t frame_post(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t config_reply(httpd_req_t *req)
+{
+    char name[NAME_MAX_LEN + 1];
+    identity_name(name);
+    char body[96];
+    snprintf(body, sizeof(body), "{\"name\":\"%s\",\"hw_id\":\"%s\"}", name,
+             identity_hw_id());
+    return reply(req, "200 OK", body);
+}
+
+static esp_err_t config_get(httpd_req_t *req)
+{
+    return config_reply(req);
+}
+
+/*
+ * PUT /api/v1/config  {"name":"lobby-r03-c07"}
+ * Provisioning: sets the panel's wall-position name (name_rules.h). Only
+ * "name" is accepted; any other key is refused, so a typo never looks like
+ * success. Plain HTTP like the rest of v1: the VLAN is the boundary.
+ */
+#define CONFIG_BODY_MAX 128
+static esp_err_t config_put(httpd_req_t *req)
+{
+    if (req->content_len == 0 || req->content_len > CONFIG_BODY_MAX) {
+        reply_code(req, "400 Bad Request", "length");
+        return ESP_FAIL;
+    }
+    char buf[CONFIG_BODY_MAX + 1];
+    size_t got = 0;
+    while (got < req->content_len) {
+        int n = httpd_req_recv(req, buf + got, req->content_len - got);
+        if (n <= 0) { /* a small body: one timeout is a dead client */
+            reply_code(req, "400 Bad Request", "body");
+            return ESP_FAIL;
+        }
+        got += (size_t)n;
+    }
+    buf[got] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    const cJSON *name = cJSON_GetObjectItemCaseSensitive(root, "name");
+    bool only_name = cJSON_IsObject(root) && cJSON_GetArraySize(root) == 1;
+    if (!only_name || !cJSON_IsString(name)) {
+        cJSON_Delete(root);
+        return reply_code(req, "400 Bad Request", "body");
+    }
+    esp_err_t err = identity_set_name(name->valuestring);
+    cJSON_Delete(root);
+    if (err == ESP_ERR_INVALID_ARG) {
+        return reply_code(req, "422 Unprocessable Entity", "name");
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "config: %s", esp_err_to_name(err));
+        return reply_code(req, "500 Internal Server Error", "storage");
+    }
+    return config_reply(req);
+}
+
 esp_err_t api_start(const api_boot_info_t *boot)
 {
     s_boot = boot;
@@ -196,7 +266,13 @@ esp_err_t api_start(const api_boot_info_t *boot)
         .uri = "/api/v1/status", .method = HTTP_GET, .handler = status_get};
     static const httpd_uri_t frame = {
         .uri = "/api/v1/frame", .method = HTTP_POST, .handler = frame_post};
+    static const httpd_uri_t cfg_get = {
+        .uri = "/api/v1/config", .method = HTTP_GET, .handler = config_get};
+    static const httpd_uri_t cfg_put = {
+        .uri = "/api/v1/config", .method = HTTP_PUT, .handler = config_put};
     httpd_register_uri_handler(server, &status);
     httpd_register_uri_handler(server, &frame);
+    httpd_register_uri_handler(server, &cfg_get);
+    httpd_register_uri_handler(server, &cfg_put);
     return ESP_OK;
 }

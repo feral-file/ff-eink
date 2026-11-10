@@ -27,3 +27,8 @@ esp_err_t net_start(void);
 
 /* Lock-free snapshot. */
 void net_get_status(net_status_t *out);
+
+/* DHCP hostname. net_start applies the identity name before the first
+ * DHCP request; a later call takes effect on the next DHCP request (lease
+ * renewal or reconnect). No-op before net_start. */
+void net_set_hostname(const char *name);

@@ -146,6 +146,8 @@ Normal build, board on the adapter. Find the DHCP lease on the router,
 then:
 
 ```sh
+python3 pusher/panelctl.py scan <subnet>/24     # finds the panel: name ffeink-cb0cb4
+python3 pusher/panelctl.py name <ip> bench-01   # status and DHCP hostname follow
 curl -s http://<ip>/api/v1/status | python3 -m json.tool
 python3 pusher/dither.py --chart -o pusher/out
 python3 pusher/push.py --host <ip> --count 1 --chart-ends --log bringup.csv

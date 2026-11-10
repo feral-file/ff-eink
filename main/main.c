@@ -45,6 +45,7 @@
 #include "nvs_flash.h"
 
 #include "api.h"
+#include "identity.h"
 #include "net.h"
 #include "panel.h"
 #include "patterns.h"
@@ -268,6 +269,7 @@ static void link_watchdog(void)
 void app_main(void)
 {
     boot_counters();
+    identity_init();
     reset_key_init();
     int sw8_at_boot = gpio_get_level(PIN_RESET_KEY);
     bool maintenance = sw8_at_boot == 0 && reset_key_held(MAINTENANCE_HOLD_MS);

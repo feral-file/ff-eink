@@ -20,6 +20,8 @@ hardware. Bench procedure and results: [docs/bench.md](docs/bench.md).
 | `main/main.c` | boot counters, flash grace window, bench build, wiring, link watchdog |
 | `pusher/dither.py` | image → 960,000 B frame (crop, Floyd–Steinberg, pack) |
 | `pusher/push.py` | scheduled pusher with per-miss cause attribution, CSV log |
+| `pusher/panelctl.py` | provisioning: `status`, `name` (set wall-position name), `scan` (list every panel in a network) |
+| `main/identity.c` | panel name (NVS, DHCP hostname) and hardware id |
 
 ## Network path
 
