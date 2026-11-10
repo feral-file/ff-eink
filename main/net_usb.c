@@ -9,6 +9,14 @@
  * vendor protocol, which this firmware does not speak). The enum filter
  * therefore picks configuration 2 whenever a device offers more than one.
  * The VID/PID and configuration count it saw are reported in the status.
+ *
+ * The bring-up sequence (USB host task with enum filter, CDC driver install,
+ * ECM driver, iot_eth, esp_netif glue) and its parameters are adapted from
+ * Espressif's example esp-iot-solution examples/usb/host/usb_ecm_4g_module,
+ * main/usb_ecm_4g_module.c: Copyright 2024-2026 Espressif Systems (Shanghai)
+ * CO LTD, Apache-2.0 (LICENSES/Apache-2.0.txt). Modified: restructured into
+ * net_start()/net_get_status(), own event handling, status counters and
+ * error handling; modem/AT and Wi-Fi parts not used.
  */
 #include "net.h"
 

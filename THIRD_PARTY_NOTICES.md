@@ -12,7 +12,7 @@ carry.
 |---|---|---|
 | `bpc80` | [Frans-Willem/epd-dither](https://github.com/Frans-Willem/epd-dither) `src/palette.rs` @ `9b461577` (`SPECTRA6_D65_BPC80_ADJUSTED`): a spectrophotometer measurement of a Spectra 6 panel | GPL-3.0 at `9b461577`; the repository has been AGPL-3.0-or-later since `eccead50`, with identical values. Only this one set of six measured colours is used, as data with attribution; no code. The project's other palettes are deliberately not copied. |
 | `aitjcize` | [aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe) `main/color_palette.c` @ `54d87a36` | MIT, notice below |
-| `epdoptimize` | [paperlesspaper/epdoptimize](https://github.com/paperlesspaper/epdoptimize) `src/dither/data/default-palettes.json`, palette `spectra6`, @ `25f42661` | Apache-2.0 (the project ships no NOTICE file) |
+| `epdoptimize` | [paperlesspaper/epdoptimize](https://github.com/paperlesspaper/epdoptimize) `src/dither/data/default-palettes.json`, palette `spectra6`, @ `25f42661`; Copyright 2025 Robert Gühne | Apache-2.0 (the project ships no NOTICE file); values converted from hex to decimal |
 
 ### aitjcize/esp32-photoframe (MIT)
 
@@ -39,6 +39,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Code adapted from other projects
+
+| File | Adapted from | Licence |
+|---|---|---|
+| `main/net_usb.c` | the USB host / CDC-ECM bring-up sequence and its parameters, from Espressif's [esp-iot-solution](https://github.com/espressif/esp-iot-solution) `examples/usb/host/usb_ecm_4g_module/main/usb_ecm_4g_module.c`, Copyright 2024-2026 Espressif Systems (Shanghai) CO LTD. Modified as stated in the file header. | Apache-2.0 ([LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)); the project ships no NOTICE file |
 
 ## Facts used without code
 
