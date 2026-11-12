@@ -55,7 +55,7 @@ Defined in `partitions.csv`:
 
 | Key | Where it lives | Signs |
 |---|---|---|
-| **Release key** (RSA-3072) | The `SIGNING_KEY` secret of the `release` environment, plus one offline backup held by the maintainers. Its public-key digest will be committed in `keys/release-key.sha256` (see Open); until then `release.yml` fails at the digest check. | Everything that ships. A board is USB-provisioned only with the `-full.zip` of a release. |
+| **Release key** (RSA-3072) | The `SIGNING_KEY` secret of the `release` environment, plus one offline backup held by the maintainers. Its public-key digest is pinned in `keys/release-key.sha256`; `release.yml` refuses to publish an image signed with any other key. | Everything that ships. A board is USB-provisioned only with the `-full.zip` of a release. |
 | **Dev key** | Each developer's own `signing-key.pem`, gitignored. Created with `espsecure.py generate_signing_key --version 2 --scheme rsa3072 signing-key.pem`. | Lab boards only. A lab board moves to the release key with one USB flash of a release `-full.zip`. |
 
 **Protecting the "only from CI" property**
@@ -159,8 +159,8 @@ The bench build is a lab tool. It is built locally and is not released.
 
 - **Unauthenticated calls.** `PUT /api/v1/config` (renaming) and frames stay unauthenticated on the VLAN, like the rest of v1. Firmware is protected by the signature.
 - **One-time GitHub setup, by a maintainer.**
-  1. Create the `release` environment with the maintainers as required reviewers, deployments limited to `v*` tags. Environment protection rules on a private repository need a paid GitHub plan.
-  2. Create the release key, its secret and its backup, and commit `keys/release-key.sha256`.
+  1. Create the `release` environment with the maintainers as required reviewers, deployments limited to `v*` tags.
+  2. ~~Create the release key, its secret and its backup, and commit `keys/release-key.sha256`.~~ Done (2026-11-12).
   3. Protect `main`, and add a tag ruleset restricting who may create `v*` tags.
 
 ## Staging
