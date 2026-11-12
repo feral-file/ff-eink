@@ -1,6 +1,7 @@
 # Third-party notices
 
-ff-eink's own code is MIT (see `LICENSE`). This file lists what ff-eink uses
+ff-eink's own code is MPL-2.0 (see `LICENSE`; Feral File's own code in commits up to
+`418cbca` was released under MIT). This file lists what ff-eink uses
 from other projects, under which licence, and what a redistribution must
 carry.
 
@@ -10,7 +11,7 @@ carry.
 
 | Palette | Source | Licence of the source |
 |---|---|---|
-| `bpc80` | [Frans-Willem/epd-dither](https://github.com/Frans-Willem/epd-dither) `src/palette.rs` @ `9b461577` (`SPECTRA6_D65_BPC80_ADJUSTED`): a spectrophotometer measurement of a Spectra 6 panel | GPL-3.0 at `9b461577`; the repository has been AGPL-3.0-or-later since `eccead50`, with identical values. Only this one set of six measured colours is used, as data with attribution; no code. The project's other palettes are deliberately not copied. |
+| `bpc80` | [Frans-Willem/epd-dither](https://github.com/Frans-Willem/epd-dither) `src/palette.rs` @ `9b461577` (`SPECTRA6_D65_BPC80_ADJUSTED`): spectrophotometer measurements of a Spectra 6 panel, processed upstream with 80 % black-point compensation and L*-symmetric scaling | GPL-3.0 at `9b461577`; the repository has been AGPL-3.0-or-later since `eccead50`, with identical values. Only this one set of six measured colours is used, as data with attribution; no code. The project's other palettes are deliberately not copied. |
 | `aitjcize` | [aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe) `main/color_palette.c` @ `54d87a36` | MIT, notice below |
 | `epdoptimize` | [paperlesspaper/epdoptimize](https://github.com/paperlesspaper/epdoptimize) `src/dither/data/default-palettes.json`, palette `spectra6`, @ `25f42661`; Copyright 2025 Robert Gühne | Apache-2.0 (the project ships no NOTICE file); values converted from hex to decimal |
 
@@ -53,11 +54,16 @@ SOFTWARE.
 
 ## Firmware binaries
 
+ff-eink's own files are MPL-2.0. MPL-2.0 §3.2 requires that anyone receiving
+an executable can get its source: every GitHub Release links the exact
+source tree of its tag in its release notes, and anyone redistributing the
+binaries must do the same.
+
 The firmware is built with **ESP-IDF v5.5.6** (Apache-2.0) and the Espressif components `iot_usbh_ecm`, `iot_usbh_cdc` and `iot_eth` (Apache-2.0, fetched by the component manager and not stored in this repository). ESP-IDF links third-party code under its own licences.
 
 These are the licences that apply:
 
-- `esp-idf-sbom license` reports these from the SPDX tags in the sources: Apache-2.0, BSD-3-Clause, BSD-2-Clause-FreeBSD, BSD-2-Clause-Views, MIT, CC0-1.0 and Unlicense.
+- `esp-idf-sbom license` reports these from the SPDX tags in the sources: Apache-2.0, BSD-3-Clause, BSD-2-Clause-FreeBSD, BSD-2-Clause-Views, MIT, CC0-1.0, Unlicense, and MPL-2.0 (ff-eink's own files; text in `LICENSE`).
 - Some linked libraries have no SPDX tags and keep their notices in their own files. The tool does not report them, so they are listed here:
   - cJSON (MIT)
   - http_parser (MIT)

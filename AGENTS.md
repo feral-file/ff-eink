@@ -18,7 +18,7 @@ This file is navigation only. The facts live in `docs/`. Read the doc for your t
 4. **Never move or shrink `nvs`** in `partitions.csv` (0x9000, 24 KB). It holds each panel's wall-position name, and the layout can only change over USB.
 5. **Never cut a refresh short.** Restarts go through `restart_when_idle()` in `main/restart.c`, and the panel state machine guards every writer. Keep both properties.
 6. **Code and docs change in the same commit.** When behaviour changes, update the doc that describes it (see the task table). README stays an introduction plus navigation; details belong in `docs/`.
-7. **Open-source project.** Docs must make sense to an outside contributor:
+7. **Open-source project, MPL-2.0.** Every new source file starts with the MPL-2.0 header used by the existing ones. Docs must make sense to an outside contributor:
    - no organisation-internal names, links, dates or local paths;
    - no code copied from GPL or AGPL sources, or from the unlicensed vendor example (THIRD_PARTY_NOTICES.md); record any new third-party data or code there.
 
