@@ -53,7 +53,11 @@ checks from [docs/bench.md](docs/bench.md), and the results.
 
 ## Licence
 
-By contributing you agree your contribution is released under the MIT
-licence in [LICENSE](LICENSE). Do not paste code from incompatibly licensed
-projects. GPL and AGPL sources may inform a method, but no code may be
+ff-eink is licensed under the **Mozilla Public License 2.0** ([LICENSE](LICENSE)).
+By contributing you agree your contribution is released under MPL-2.0.
+Start every new source file with the same header as the existing ones
+(`SPDX-License-Identifier: MPL-2.0` plus the MPL notice). Do not paste code
+from incompatibly licensed projects; code adapted from a permissively
+licensed project keeps its notice in the file header and is listed in
+THIRD_PARTY_NOTICES.md. GPL and AGPL sources may inform a method, but no code may be
 copied from them. Record any third-party data you add in THIRD_PARTY_NOTICES.md.

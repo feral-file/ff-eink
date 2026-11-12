@@ -1,4 +1,12 @@
 /*
+ * SPDX-License-Identifier: MPL-2.0
+ * Copyright (c) 2026 Feral File
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+/*
  * Generated test frames for gate G1 (panel bring-up without a network).
  * Generated, not embedded: a 960 KB array would not fit the app partition.
  */

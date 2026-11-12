@@ -1,4 +1,12 @@
 /*
+ * SPDX-License-Identifier: MPL-2.0
+ * Copyright (c) 2026 Feral File
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+/*
  * Frame format of the GDEP133C02 (13.3" Spectra 6, 1200x1600).
  *
  * Pure helpers with no ESP-IDF dependency, so test/frame_test.c can run them

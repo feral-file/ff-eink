@@ -1,4 +1,14 @@
 /*
+ * SPDX-License-Identifier: MPL-2.0 AND Apache-2.0
+ * Copyright (c) 2026 Feral File
+ * Portions Copyright 2024-2026 Espressif Systems (Shanghai) CO LTD (Apache-2.0,
+ * see below)
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+/*
  * Ethernet over the board's only USB-C port: the ESP32-S3 runs its native
  * USB (Full Speed, 12 Mbit/s) as host, and a "PoE to USB-C" adapter on that
  * port supplies 5 V and a USB NIC. Driver: Espressif iot_usbh_ecm (CDC-ECM,

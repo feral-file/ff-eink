@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Feral File
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Push frames to an ff-eink panel on a fixed schedule and log every outcome.
 
     python3 push.py --host 192.168.1.50 out/*.bin --count 1440 --chart-ends \

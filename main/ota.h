@@ -1,4 +1,12 @@
 /*
+ * SPDX-License-Identifier: MPL-2.0
+ * Copyright (c) 2026 Feral File
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+/*
  * OTA bookkeeping (docs/ota.md). The upload itself is POST /api/v1/firmware
  * in api.c; this module owns what happens after a new image boots.
  */

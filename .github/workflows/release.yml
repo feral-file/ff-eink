@@ -104,4 +104,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" out/* --repo "${GITHUB_REPOSITORY}" \
-            --title "ff-eink ${GITHUB_REF_NAME}" --generate-notes
+            --title "ff-eink ${GITHUB_REF_NAME}" --generate-notes \
+            --notes "Source code of this release (MPL-2.0, required for the firmware binaries): https://github.com/${GITHUB_REPOSITORY}/tree/${GITHUB_REF_NAME}"

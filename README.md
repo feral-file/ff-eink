@@ -61,6 +61,13 @@ The panel API is plain HTTP with no authentication, so **panels must sit on a de
 
 ## Licence and sources
 
-MIT (see `LICENSE`). Third-party data, facts and the licences that apply to
+[Mozilla Public License 2.0](LICENSE) (MPL-2.0): use it in any project, open
+or closed; changes to ff-eink's own files are shared under MPL-2.0 when you
+distribute them. Third-party data, facts and the licences that apply to
 firmware binaries are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md);
 standard licence texts are in [LICENSES/](LICENSES/).
+
+Feral File's own code in versions published before the change to MPL-2.0
+(up to and including `418cbca`) was released under the MIT licence and stays
+available under it. Third-party portions in those versions keep the licences
+listed in THIRD_PARTY_NOTICES.md.

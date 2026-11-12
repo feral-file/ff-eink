@@ -1,4 +1,12 @@
 /*
+ * SPDX-License-Identifier: MPL-2.0
+ * Copyright (c) 2026 Feral File
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+/*
  * GDEP133C02 driver for the Good Display ESP32-133C02-IL board.
  *
  * Register values and command order are facts taken from Good Display's
