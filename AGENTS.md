@@ -9,7 +9,7 @@ This file is navigation only. The facts live in `docs/`. Read the doc for your t
 1. **Hardware needs the human's permission.**
    - Do not flash, erase, `read_flash`, or open the serial port unless the human asks.
    - On macOS, opening the port or running esptool can reset the chip. A reset during a panel refresh cuts the waveform. Before touching the port, ask whether the panel is idle (not flashing).
-   - Use `--after no_reset` with esptool.
+   - Use `--after no_reset` with esptool, also for writes: the human replugs the board to boot the new image. (docs/development.md uses `--after hard_reset` for writes a human runs while the panel is idle.)
    - Details: docs/development.md, "Flashing, and the way back".
 2. **Never commit a key.** `*.pem` is gitignored.
    - Every build needs `signing-key.pem` (a dev key; see docs/development.md).

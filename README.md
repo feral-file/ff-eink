@@ -13,7 +13,8 @@ It is built for multi-panel installations, such as a wall of fifty panels where 
 | Area | State |
 |---|---|
 | Panel driver | Verified on hardware: gate G1 passed on 2026-11-10. |
-| Network, OTA updates and the 24 h soak | Written. Testing waits for the PoE USB-C adapter. |
+| Network | Verified on hardware: bring-up on the PoE USB-C adapter. |
+| OTA updates and the 24 h soak | Written. Hardware checks pending. |
 | Procedures and results | See [docs/bench.md](docs/bench.md). |
 
 ## Documentation

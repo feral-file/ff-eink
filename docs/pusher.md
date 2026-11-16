@@ -29,7 +29,7 @@ It writes one `<name>.bin` per input. With `--preview` it also writes `<name>.pr
 | `aitjcize` | the default palette of aitjcize/esp32-photoframe (its own pipeline adds an S-curve and saturation; only the palette is used here) | compared on the panel, see docs/bench.md |
 | `epdoptimize` | the `spectra6` palette of paperlesspaper/epdoptimize | compared on the panel, see docs/bench.md |
 
-Pick per image or per series rather than switching automatically, so similar images render alike. Judge on the panel: `--preview` draws with the palette's own colours, so the bpc sets look more vivid on screen than on the panel.
+Pick per image or per series rather than switching automatically, so similar images render alike. Judge on the panel: `--preview` draws with the palette's own colours, so `bpc80` looks more vivid on screen than on the panel.
 
 ## `push.py`: push frames on a schedule (reference pusher and soak harness)
 
@@ -88,6 +88,8 @@ Step-by-step instructions for museum operators are in [UPDATING.txt](UPDATING.tx
 | `push.py` | `--interval` seconds between frames | 60 |
 | `push.py` | `--poll` status poll period | 1 s |
 | `push.py` | `--port` | 80 |
+| `push.py` | `--count` frames to push | 1440 (24 h at 60 s) |
+| `push.py` | `--log` CSV, appended | `push.csv` |
 | `push.py` | `--pull-file` (or env `FF_EINK_PULL_FILE`) | none |
 | `panelctl.py scan` | `--timeout` per address | 4 s |
 | `panelctl.py update` | `--batch` panels at once after the canary | 5 |
