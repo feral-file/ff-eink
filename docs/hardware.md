@@ -57,10 +57,11 @@ PoE switch/injector ─Cat5e/6─► "PoE to USB-C with Ethernet" adapter ─USB
 - **Data.**
   - The board's USB-C runs as a **USB host** at Full Speed (12 Mbit/s).
   - The adapter is both the power supply and the NIC.
-  - A 960,000 B frame takes about 1–2 s to upload (estimate; to be measured at network bring-up).
+  - A 960,000 B frame takes about 1.2 s to upload (bench: `last_upload_ms` 1220, RTL8152 adapter).
 - **NIC requirement.**
   - The NIC must expose a **CDC-ECM** USB configuration.
-  - Realtek RTL8152/8153 (`0bda:8152` / `8153`) are expected to do this as configuration 2 (unverified on this board), and the firmware selects configuration 2 whenever a device has more than one.
+  - Realtek RTL8152 (`0bda:8152`) does this as configuration 2, verified on this board ([bench.md](bench.md#network-bring-up)); RTL8153 (`8153`) is expected to as well. The firmware selects configuration 2 whenever a device has more than one.
+  - The board has CC Rd only and no USB PD controller, so it cannot swap data roles. An adapter whose listing says it needs a PD host may still work (the bench adapter does); confirm on the board.
   - Check any adapter before use: [bench.md §0](bench.md).
 - **No Ethernet MAC on the board.** The earlier W5500-over-SPI plan was replaced by this route because it needed no soldering. The adapter needs 802.3af PoE.
 - **Security.** The API is plain HTTP. **A dedicated VLAN is mandatory**; see [api.md](api.md).

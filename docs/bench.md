@@ -37,7 +37,11 @@ macOS shows only the active configuration's interfaces; class 2 / subclass 6
 
 | Date | Adapter | VID:PID | bcdDevice | Configurations | Notes |
 |---|---|---|---|---|---|
-| | | | | | |
+| 2026-11-15 | P2C5V (802.3af, 5 V/2–2.4 A, 10/100, sold under several brands) | `0bda:8152` | `0x2000` | 2 | NIC directly on the root port, no hub. macOS picked configuration 2 itself: if0 class 2/6 (ECM), if1 class 10 (CDC data), bound by the built-in ECM driver. Listings say it needs a USB PD host; on the board (CC Rd only, no PD) it powers and enumerates anyway (see Network bring-up). |
+
+The Mac readout cannot prove the board will work: the Mac speaks USB PD and
+can swap data roles, the board cannot. Only `usb_configs` and `link_up` on
+the board settle that.
 
 ## 1. Back up the factory firmware (once, before the first flash)
 
@@ -191,7 +195,14 @@ python3 pusher/push.py --host <ip> pusher/out/*.bin --count 10 --log bringup.csv
 
 | Date | DHCP | usb / configs | upload_ms | 10 in a row | Notes |
 |---|---|---|---|---|---|
-| | | | | | |
+| 2026-11-15 | lease on first boot; `scan` finds `ffeink-cb0cb4` | `0bda:8152` / 2 | 1220–1283 | not run: 3 frames (chart, then 2 photos at a 180 s interval), all shown, 0 misses | P2C5V adapter, normal build at `ac8271b`, `ota_state` `valid`, `link_downs` 0, `panel_errors` 0. Each frame shown in 29.2–29.3 s, refresh 25999–26047 ms. Boot `reset_reason` was `BROWNOUT` (`brownouts` 1 → 7 over a day of replugs); unchanged across all three refreshes and 8 min of uptime. |
+
+The first attempt found nothing on the LAN. With no log once USB host is up,
+a temporary build painted the panel by bring-up stage after `net_start`
+(USB device seen, ECM link up, IP). It showed USB and ECM link up but no IP.
+The adapter on the Mac then also got no lease: 10baseT, 0 packets received.
+The cause was the injector's upstream cabling, not the board; after fixing
+it the link came up at 100baseTX and the board got a lease.
 
 ## OTA checks (before G6, so the soak runs the shipping image)
 
@@ -239,4 +250,8 @@ python3 pusher/push.py --host <ip> pusher/out/*.bin --count 1440 --chart-ends \
 
 Record findings here as they come up.
 
--
+- A way to see bring-up progress without a log. A lit link LED on the
+  adapter only proves the adapter-to-injector hop; check the network with
+  the adapter on a Mac first (it must get a lease and receive packets).
+  When the board still gets no IP, a temporary build that paints the panel
+  by stage (no USB device / no ECM link / no IP / IP) narrows it down.
