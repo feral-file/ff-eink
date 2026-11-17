@@ -83,6 +83,6 @@ dependencies:
 direct_dependencies:
 - espressif/iot_usbh_ecm
 - idf
-manifest_hash: c96a0f90f3f6d9892b46c4f34d5c21d5f2c7ff361f77e38ce5e76922264d6bce
+manifest_hash: 1bcc571ce0ccba064e7af954018f4a17f108756fdcae436f7d50e163f5f81519
 target: esp32s3
 version: 2.0.0

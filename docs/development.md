@@ -87,7 +87,7 @@ Hardware procedures and their results are in [bench.md](bench.md).
 | Workflow | Trigger | Does |
 |---|---|---|
 | `.github/workflows/ci.yml` | every branch push (not `v*` tags) and every pull request | Builds the normal and bench images, signed with a throwaway key, and runs both test suites |
-| `.github/workflows/release.yml` | a `v*` tag, after a maintainer approves the `release` environment | Builds and signs with the release key, checks the key digest against `keys/release-key.sha256`, then publishes a GitHub Release |
+| `.github/workflows/release.yml` | a `v*` tag, after a maintainer approves the `release` environment | Builds and signs with the release key, checks the key digest against `keys/release-key.sha256` and that the image version equals the tag, then publishes a GitHub Release (a pre-release when the tag has a `-`, e.g. `v0.1.0-rc1`, so it never shows as Latest) |
 
 Each release carries:
 - `ff-eink-<tag>.bin`: the app, used for OTA;

@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: MPL-2.0 AND Apache-2.0
- * Copyright (c) 2026 Feral File
+ * Copyright (c) 2026 Feral File Inc.
  * Portions Copyright 2024-2026 Espressif Systems (Shanghai) CO LTD (Apache-2.0,
  * see below)
  *
