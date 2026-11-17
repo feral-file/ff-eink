@@ -222,7 +222,14 @@ different version (e.g. an empty commit, or `git tag v0.0.0-test`), then:
 
 | Date | # | Result | Notes |
 |---|---|---|---|
-| | | | |
+| 2026-11-17 | 1 | pass | `ac8271b` → test image B (dev key, version `ota-test-b`) with `panelctl.py update`: both canary passes `updated`, 4 min 21 s in total, `ota_state` `valid`, `restart_cause` `ota`. |
+| 2026-11-17 | 2 | pass | B re-signed with a throwaway key (`espsecure.py sign_data` on `ff-eink-unsigned.bin`): `422 {"error":"image"}`, no restart, `fw` unchanged. |
+| 2026-11-17 | 3 | pass | First 300000 bytes of B, sent with an exact `Content-Length`: `422 {"error":"image"}`, no restart. |
+| 2026-11-17 | 4 | pass | A sent slowly (over 55 s) so the cable could be pulled by hand. The injector → adapter cable was pulled at 30–40 %: the board booted B, `ota_state` `valid`, `rolled_back` false, `reset_reason` `BROWNOUT` (`brownouts` +1, from the pull). |
+| 2026-11-17 | 5 | pass | Image C2 calls `esp_netif_init()` instead of `net_start()`, so lwIP and the HTTP server run but no IP ever arrives. It booted at 08:30, rolled back on its own at 08:41 (60 s grace + 10 min), back on B with `rolled_back` true, `reset_reason` `SW`. A first attempt, C, skipped `net_start()` entirely: without `esp_netif_init()` the HTTP server start panics, and the bootloader reverted to B 138 s after the upload (`reset_reason` `PANIC`, `rolled_back` true). That is a test-image artefact, since `net_start()` initialises the netif before anything that can fail, but it did exercise the crash-before-valid path. |
+| 2026-11-17 | 6 | pass | `update` again with B: `skipped`, exit 0. |
+| 2026-11-17 | 7 | pass | `ac8271b` → B (check 1), then B → A (`v0.1.0-rc1-4-gdf085a0`, a clean build) with `update`: both canary passes `updated` in 4 min 22 s; the board now runs A. Each canary's second pass also proves the new image takes the next update. |
+| 2026-11-17 | 8 | pass | Image B reported `uxTaskGetStackHighWaterMark` in status (temporary code). httpd (10 KB): 5600 B free at the lowest, after the 422 uploads of checks 2 and 3, which run the full signature check. `ota_valid` (8 KB): 6960 B free when it marked the image valid. The rollback path of check 5 runs in the same task and could not be read over the network; it completed without a crash (`reset_reason` `SW`). |
 
 ## G6: 24 h at 60 s
 

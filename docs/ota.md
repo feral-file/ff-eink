@@ -1,6 +1,6 @@
 # Firmware updates: LAN OTA from a laptop, released with the firmware
 
-Status: stages 1–4 are written; the on-hardware checks in [bench.md](bench.md#ota-checks-before-g6-so-the-soak-runs-the-shipping-image) are pending.
+Status: stages 1–4 are written, and the on-hardware checks in [bench.md](bench.md#ota-checks-before-g6-so-the-soak-runs-the-shipping-image) passed on the reference unit (dev key). The end-to-end test of a release from the USB stick is still open.
 
 ## Goal and constraints
 
