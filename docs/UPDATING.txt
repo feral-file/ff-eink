@@ -32,9 +32,10 @@ Python 3
    firmware can take future updates): about 5 minutes. All 55 panels take
    about 30 minutes. A screen may stay on its last picture during the update.
 
-4. Read the result table (also saved as update-report.csv). Any line that
-   says "failed": run the same command again later; it only retries what is
-   left. If a panel keeps failing, note its name and contact whoever supplied the panels.
+4. Read the result table (also saved as update-report.csv). Check that it
+   lists all 55 panels. Any line that says "failed" or "not attempted", or a
+   panel missing from the table: run the same command again later; it only
+   retries what is left. If a panel keeps failing, note its name and contact whoever supplied the panels.
 
 Do not unplug panels during an update. If one loses power anyway, it starts
 on the firmware it had before; run the update again.

@@ -101,12 +101,12 @@ The new app boots in the *pending-verify* state.
 
 - It marks itself valid (`esp_ota_mark_app_valid_cancel_rollback`) after it has held an IP for 60 s with the HTTP server running. If that otadata write fails, it stays `pending` and retries.
 - Any restart before that boots the previous slot: a crash, a watchdog reset or a power loss.
-- If no IP arrives within 10 minutes, it calls `esp_ota_mark_app_invalid_rollback_and_reboot`.
+- If no IP arrives within 10 minutes of the network starting (about 11 min after boot), it calls `esp_ota_mark_app_invalid_rollback_and_reboot`. If the HTTP server fails to start, it rolls back at once. Either rollback waits for the panel to be idle.
 
 ### Status additions
 
 - `fw` comes from `esp_app_get_description()->version`, which is the git tag.
-- `ota_state` is `valid` or `pending`.
+- `ota_state` is `valid` or `pending` (`unknown` only for a moment at start-up).
 - `rolled_back` is true when the last update was reverted.
 
 Maintenance mode and the bench build never start the network, so they never take updates.
@@ -128,7 +128,7 @@ Maintenance mode and the bench build never start the network, so they never take
    - then **install the same image over itself once more**. That second upload is served by the new image, so it proves the new image can take the *next* update. A release whose update path is broken would otherwise reach every panel, and each would need a USB reflash;
    - stop everything if either pass fails or rolls back.
 3. **Batches.** Update the rest five at a time. Each panel is attempted only while `state == idle`, so a refresh is never cut.
-4. **Report.** Print one line per attempted panel as it finishes, and write every panel to `update-report.csv`: `updated`, `skipped`, `not attempted` (after a canary failure), or `failed: <reason>` (`rolled back`, `old image booted`, `not valid in time`, `never idle`, `unreachable`, `upload …`). The exit code is 0 only if every panel ended `updated` or `skipped`.
+4. **Report.** Print one line per attempted panel as it finishes, and write every panel the scan found to `update-report.csv`: `updated`, `skipped`, `not attempted` (after a canary failure), or `failed: <reason>` (`rolled back`, `old image booted`, `not valid in time`, `never idle`, `unreachable`, `upload …`). The exit code is 0 only if every panel ended `updated` or `skipped`.
 5. **Re-run.** Running it again finishes whatever is left.
 
 **Time:** per panel, about 1–2 s of upload plus roughly 2.5 minutes of restart, 60 s flash grace window, DHCP and 60 s validation. The canary takes two passes (about 5 minutes); then batches of 5 put 55 panels at roughly 30 minutes.
@@ -145,11 +145,12 @@ Maintenance mode and the bench build never start the network, so they never take
 **Release steps:**
 
 1. Build the firmware, which is signed at build time with the release key from the secret. The version comes from `git describe`, which is the tag.
-2. Check that the image's public-key digest equals `keys/release-key.sha256`.
+2. Check that the image's public-key digest equals `keys/release-key.sha256`, and that the image's version equals the tag exactly.
 3. Assemble the release assets:
    - `ff-eink-vX.Y.Z.bin`, the app image used for OTA;
    - `ff-eink-vX.Y.Z-full.zip`, containing the bootloader, partition table, `ota_data_initial.bin`, the app and `flash_args`, used for USB provisioning of new boards;
    - `panelctl.py`, `dither.py`, `push.py` and `UPDATING.txt`;
+   - `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses.zip` (licence texts plus `FIRMWARE_LICENSES.txt`) and the SPDX SBOM `ff-eink-vX.Y.Z.spdx`;
    - `SHA256SUMS`.
 4. Create a GitHub Release with those assets and generated notes. This runs in a separate job on the hosted runner, which has `gh`.
 

@@ -94,9 +94,10 @@ Each release carries:
 - `ff-eink-<tag>-full.zip`: everything for USB provisioning (unzip, `cd` into it, then `python -m esptool --chip esp32s3 -p <port> -b 460800 --before default_reset --after hard_reset write_flash @flash_args` in maintenance mode or within the grace window);
 - `panelctl.py`, `dither.py`, `push.py`;
 - [UPDATING.txt](UPDATING.txt);
+- `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses.zip` (licence texts plus `FIRMWARE_LICENSES.txt`) and the SPDX SBOM `ff-eink-<tag>.spdx`;
 - `SHA256SUMS`.
 
-[ota.md](ota.md#open) lists the one-time GitHub setup still to do: the environment, the release key, and branch protection.
+[ota.md](ota.md#open) lists the one-time GitHub setup still to do: the `release` environment, and branch and tag protection.
 
 ## Code map
 
@@ -110,4 +111,5 @@ Each release carries:
 | `main/identity.c`, `main/name_rules.h` | Panel name and hardware id |
 | `main/ota.c`, `main/restart.c` | Post-update validation and rollback; restarts that wait for the panel to be idle |
 | `pusher/` | Reference and operator tools ([pusher.md](pusher.md)) |
+| `main/Kconfig.projbuild`, `sdkconfig.bench` | Bench-build option (`CONFIG_FF_EINK_BENCH_PATTERNS`) |
 | `test/` | Host C tests |

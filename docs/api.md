@@ -53,8 +53,10 @@ Speed, estimate) or a firmware image uploads, other requests, status
 included, wait.
 
 **Connections.** At most 4 sockets are kept; the least recently used one is
-closed when a fifth arrives. Unknown paths return 404, wrong methods 405.
-Every reply is `application/json` with `Cache-Control: no-store`.
+closed when a fifth arrives. Every reply from the endpoints below is
+`application/json` with `Cache-Control: no-store`. Unknown paths (404), wrong
+methods (405) and errors the HTTP server raises itself (e.g. 431 headers too
+large) get ESP-IDF's plain-text reply instead, and the connection is closed.
 
 ## `GET /api/v1/status`
 
@@ -66,11 +68,11 @@ The response is built from cached counters and never waits on the panel.
 | `hw_id` | the chip's factory MAC, 12 hex; never changes for a board |
 | `fw` | firmware version (`git describe` of the build; the release tag) |
 | `ota_state` | `valid`, or `pending` while a freshly updated image proves itself (docs/ota.md); `unknown` only for a moment at start-up |
-| `rolled_back` | `true` if an updated image failed to prove itself (crash, restart, power loss or no IP before it was marked valid) and the panel went back to the previous image; read once at boot, stays `true` until the next successful update. Also `true` (harmlessly) after an upload that was interrupted |
+| `rolled_back` | `true` if an updated image failed to prove itself (crash, restart, power loss or no IP before it was marked valid) and the panel went back to the previous image; read once at boot; stays `true` until the next firmware upload is started (even one that is refused or fails), and reads `false` from the boot after that |
 | `uptime_s` | seconds since boot |
 | `boot_count` | boots since NVS was last erased (survives reflashing and updates) |
 | `reset_reason` | this boot's reset reason: `POWERON`, `SW`, `PANIC`, `TASK_WDT`, `BROWNOUT`, … |
-| `restart_cause` | why the firmware restarted itself before this boot: `link_watchdog`, `panel_init`, `reset_key` (SW8), `ota`, or `""`. An OTA rollback and a failed panel SPI re-init restart without a cause (`""`, `reset_reason: SW`) |
+| `restart_cause` | why the firmware restarted itself before this boot: `link_watchdog`, `panel_init`, `reset_key` (SW8), `ota`, or `""`. An OTA rollback and a failed panel SPI re-init restart without a cause (`""`, `reset_reason: SW`); a rollback for lack of an IP may show `link_watchdog` instead, because both give up after 10 min |
 | `brownouts` | brownout resets since NVS was last erased |
 | `state` | `idle`, `receiving` or `refreshing` |
 | `last_seq` | seq of the last frame shown successfully; `0` until a frame has been shown this boot |
@@ -98,7 +100,7 @@ The response is built from cached counters and never waits on the panel.
 
 After any panel error the device power-cycles the panel through IO45 (that
 IO45 low actually removes panel power is unverified on this board; see
-docs/bench.md §2). The next frame starts
+[hardware.md](hardware.md#open-questions-for-good-display)). The next frame starts
 from a hardware reset either way.
 
 ## `GET /api/v1/config`, `PUT /api/v1/config`
@@ -148,7 +150,7 @@ rollout. Design: docs/ota.md.
 | `400` | `{"error":"body"}` | upload broke off, exceeded 60 s, or writing the slot failed | **closed** |
 | `422` | `{"error":"image"}` | not an app image, or an image that fails the header, chip, SHA-256 or **signature** check; nothing changed | kept, or **closed** when refused at the first bytes |
 | `429` | `{"error":"busy"}` | a frame is uploading or refreshing | **closed** |
-| `500` | `{"error":"storage"}` | could not start writing the slot | **closed** |
+| `500` | `{"error":"storage"}` | could not start writing the slot, including while `ota_state` is `pending` (the running image must be valid before it can be updated) | **closed** |
 
 On the "closed" rows the panel closes the connection without reading the
 rest of the body, so a client still sending may see a connection reset

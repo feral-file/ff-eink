@@ -38,8 +38,8 @@ CONFIG_SPIRAM_USE_CAPS_ALLOC=y
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
 
-# RTL815x NICs are expected to expose CDC-ECM as configuration 2 (unverified
-# on the board, docs/bench.md section 0); the enum filter selects it.
+# RTL815x NICs expose CDC-ECM as configuration 2 (verified for RTL8152 on
+# the board, docs/bench.md#network-bring-up); the enum filter selects it.
 CONFIG_USB_HOST_ENABLE_ENUM_FILTER_CALLBACK=y
 
 # 1 kHz tick so panel BUSY polling and the 20/30 ms vendor delays are real
