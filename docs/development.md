@@ -21,7 +21,7 @@ espsecure.py generate_signing_key --version 2 --scheme rsa3072 signing-key.pem  
 
 - A board accepts OTA updates only when they are signed with the key of the image it last received over USB.
 - Lab boards use a dev key.
-- Anything that ships is USB-provisioned only from a release `-full.zip`, which is signed with the release key in CI.
+- Anything that ships is USB-provisioned only from a release `-full.zip`, which is signed with the release key in CI. [provisioning.md](provisioning.md) covers doing that for a batch of boards.
 
 ## Build
 

@@ -112,11 +112,13 @@ def preview(frame: bytes, palette: str = DEFAULT_PALETTE) -> Image.Image:
     return p.convert("RGB")
 
 
-def chart() -> bytes:
+def chart(label: str = "") -> bytes:
     """The asymmetric six-colour chart, same layout as main/patterns.c.
 
     Pushed as the first and last frame of a soak so the two photos can be
     compared for ghosting. Pure inks, so no dithering is involved.
+    A label (provisioning: the panel's own name) is written in black in the
+    white area at the bottom right, so a person can match panel to record.
     """
     px = bytearray([1]) * (W * H)  # palette index 1 = white
 
@@ -133,6 +135,26 @@ def chart() -> bytes:
     rect(0, H - 2, W, 2, 0)
     rect(0, 0, 2, H, 0)
     rect(W - 2, 0, 2, H, 0)
+    if label:
+        # Pillow's built-in font, drawn small and scaled up: no font file
+        # needed, and the strokes stay solid black (one ink, no dither).
+        from PIL import ImageDraw, ImageFont
+
+        font = ImageFont.load_default()
+        ink = Image.new("1", (8 * len(label) + 8, 24), 0)  # 1 = ink
+        ImageDraw.Draw(ink).text((0, 0), label, fill=1, font=font)
+        bbox = ink.getbbox()
+        if bbox:
+            ink = ink.crop(bbox)
+            # Fit the white area right of the blue square: x 360..1160, y 1300..1540.
+            scale = max(1, min(800 // ink.width, 240 // ink.height))
+            ink = ink.resize((ink.width * scale, ink.height * scale), Image.Resampling.NEAREST)
+            data = ink.convert("L").tobytes()
+            for y in range(ink.height):
+                row = (1300 + y) * W + 360
+                for x in range(ink.width):
+                    if data[y * ink.width + x]:
+                        px[row + x] = 0  # black
     return pack(bytes(px))
 
 
