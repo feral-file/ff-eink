@@ -8,6 +8,8 @@ import json
 import struct
 import sys
 import threading
+import time
+from types import SimpleNamespace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -49,6 +51,7 @@ class FakePanel:
         self.s = {"name": "p1", "hw_id": "aa", "fw": "v0.1.0", "ota_state": "valid",
                   "rolled_back": False, "boot_count": 3, "state": "idle"}
         self.outcome, self.posts = outcome, 0
+        self.slow_gets = 0  # this many status replies stall past the probe timeout
         dev = self
 
         class H(BaseHTTPRequestHandler):
@@ -63,6 +66,9 @@ class FakePanel:
                 self.wfile.write(b)
 
             def do_GET(self):
+                if dev.slow_gets:
+                    dev.slow_gets -= 1
+                    time.sleep(panelctl.PROBE_S * 3)
                 self._send(200, dict(dev.s))
 
             def do_POST(self):
@@ -162,3 +168,26 @@ def test_cmd_update_canary_failure_exits_nonzero(route, tmp_path):
     assert rc == 1 and dev.posts == 1
     assert rows == ["p1,127.0.0.1,failed: rolled back"]
     dev.http.shutdown()
+
+
+def test_one_slow_status_reply_is_not_unreachable(route, monkeypatch):
+    monkeypatch.setattr(panelctl, "PROBE_S", 0.2)
+    dev = FakePanel()
+    dev.slow_gets = 1  # the bench saw this stop a canary
+    route["port"] = dev.http.server_address[1]
+    assert panelctl.update_one("127.0.0.1", make_image("v0.2.0"), "v0.2.0", wait=5, poll=0.05) == "updated"
+    dev.http.shutdown()
+
+
+def test_update_with_no_panel_found_fails(route, monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(panelctl, "PROBE_S", 0.2)
+    dev = FakePanel()
+    route["port"] = dev.http.server_address[1]
+    dev.http.shutdown()
+    dev.http.server_close()  # nothing listens: no panel answers
+    img = tmp_path / "img.bin"
+    img.write_bytes(make_image("v0.2.0"))
+    args = SimpleNamespace(image=str(img), network="127.0.0.1/32", batch=5, wait=1, poll=0.05,
+                           report=str(tmp_path / "r.csv"))
+    assert panelctl.cmd_update(args) == 1
+    assert "no panel answered" in capsys.readouterr().err

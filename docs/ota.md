@@ -46,6 +46,7 @@ Defined in `partitions.csv`:
 - *Protects against* a network attacker flashing their own firmware over the VLAN, and against a tampered image.
 - *Does not protect against* anyone with physical access: USB flashing still works, because no secure-boot eFuse is burned. That is the price of never bricking a board over a key.
 - *Does not protect* the other v1 calls. Frames and renaming stay unauthenticated on the VLAN.
+- A refused image stays written in the inactive slot until the next upload overwrites it; otadata never points at it. The bootloader would reach it only by falling back after the active slot fails its own SHA-256 check (flash corruption).
 
 **How the check works**
 
@@ -93,7 +94,8 @@ Defined in `partitions.csv`:
 - **Busy rule:** it shares the panel state machine. A firmware upload gets 429 while a frame uploads or refreshes, and frames get 429 while the firmware uploads.
 - **Write:** the body streams through `esp_ota_begin/write/end` into the inactive slot. It uses the same deadline-plus-`recv_wait_timeout` pattern as frames, with a longer deadline of about 60 s.
 - **Image check fails** (`esp_ota_end` checks the header, the chip, the SHA-256 and the **signature**): `422 {"error":"image"}`, and nothing changes.
-- **Accepted:** `esp_ota_set_boot_partition`, then `202 {"version":"…"}`. The device restarts once the panel is idle, with `restart_cause: ota`.
+- **Accepted:** `esp_ota_set_boot_partition`, then `202 {"version":"…"}`. The upload keeps the panel claimed and the device restarts about 0.5 s later, with `restart_cause: ota`. Until then every frame and firmware upload gets 429.
+  - Why the claim is kept: the written slot is already the boot slot. A second upload would erase and rewrite it, and its failed signature check would come too late, because the bootloader checks only the SHA-256 at boot (with the RSA scheme it cannot check signatures without hardware secure boot). The panel would then boot an unsigned image.
 
 ### First boot after an update
 
@@ -159,7 +161,6 @@ The bench build is a lab tool. It is built locally and is not released.
 ## Open
 
 - **Unauthenticated calls.** `PUT /api/v1/config` (renaming) and frames stay unauthenticated on the VLAN, like the rest of v1. Firmware is protected by the signature.
-- **`panelctl` and slow replies.** One status probe slower than 4 s makes `update` report a panel `unreachable`, and stops the rollout if that panel is the canary; a scan that finds no panel still exits 0. Seen on the bench ([bench.md](bench.md#ota-between-release-images)); to be fixed in the updater.
 
 The one-time GitHub setup is done:
 - the `release` environment requires a maintainer's approval and only deploys `v*` tags;

@@ -89,6 +89,7 @@ static const char *TAG = "main";
 #define NVS_NS "ffeink"
 #define RESTART_LINK_WATCHDOG "link_watchdog"
 #define RESTART_RESET_KEY "reset_key"
+#define RESTART_API_START "api_start"
 
 static api_boot_info_t s_boot;
 static char s_restart_cause[24];
@@ -329,5 +330,13 @@ void app_main(void)
         ESP_LOGE(TAG, "HTTP server failed: %s", esp_err_to_name(err));
     }
     ota_start_validation(err == ESP_OK);
+    if (err != ESP_OK) {
+        /* With an IP but no API the panel is unreachable, and the link
+         * watchdog sees nothing wrong. An image still pending verification
+         * rolls back by itself; a valid one gets a fresh boot here, the same
+         * way a failed panel init does. */
+        vTaskDelay(pdMS_TO_TICKS(10000));
+        restart_when_idle(RESTART_API_START);
+    }
     link_watchdog();
 }

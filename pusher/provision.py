@@ -319,7 +319,7 @@ def cmd_check(args) -> int:
     rows = inv.load()
     hosts = [str(h) for h in ipaddress.ip_network(args.network, strict=False).hosts()]
     with ThreadPoolExecutor(max_workers=64) as pool:
-        found = [p for p in pool.map(lambda ip: panelctl.probe(ip, 4.0), hosts) if p]
+        found = [p for p in pool.map(lambda ip: panelctl.probe(ip, panelctl.PROBE_S), hosts) if p]
     ours = [p for p in found if rows.get(p["hw_id"], {}).get("flash") == "ok"]
     strangers = [p for p in found if p not in ours]
     what = "white" if args.white else "the labelled chart"

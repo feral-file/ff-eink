@@ -63,7 +63,7 @@ python3 pusher/panelctl.py update --image ff-eink-v0.2.0.bin 192.168.1.0/24
 
 **`scan`**
 - Flags duplicate names and exits non-zero if it finds any.
-- Its timeout is 4 s, so a panel that is busy receiving a frame is not missed.
+- Its timeout is 10 s, so a panel that is busy receiving a frame, or slow to answer, is not missed. A full /24 takes about 40 s.
 
 **`name`**
 - Sets the name through `PUT /api/v1/config`.
@@ -92,7 +92,7 @@ Step-by-step instructions for museum operators are in [UPDATING.txt](UPDATING.tx
 | `push.py` | `--count` frames to push | 1440 (24 h at 60 s) |
 | `push.py` | `--log` CSV, appended | `push.csv` |
 | `push.py` | `--pull-file` (or env `FF_EINK_PULL_FILE`) | none |
-| `panelctl.py scan` | `--timeout` per address | 4 s |
+| `panelctl.py scan` | `--timeout` per address | 10 s |
 | `panelctl.py update` | `--batch` panels at once after the canary | 5 |
 | `panelctl.py update` | `--wait` per panel, idle to valid | 360 s |
 | `panelctl.py update` | `--report` CSV path | `update-report.csv` |
