@@ -97,7 +97,7 @@ Each release carries:
 - `LICENSE`, `THIRD_PARTY_NOTICES.md`, `licenses.zip` (licence texts plus `FIRMWARE_LICENSES.txt`) and the SPDX SBOM `ff-eink-<tag>.spdx`;
 - `SHA256SUMS`.
 
-[ota.md](ota.md#open) lists the one-time GitHub setup still to do: the `release` environment, and branch and tag protection.
+[ota.md](ota.md#open) describes the one-time GitHub setup (the `release` environment, branch and tag protection), which is in place.
 
 ## Code map
 
