@@ -15,7 +15,7 @@ It is built for multi-panel installations, such as a wall of fifty panels where 
 | Panel driver | Verified on hardware: gate G1 passed on 2026-11-10. |
 | Network | Verified on hardware: bring-up on the PoE USB-C adapter. |
 | OTA updates | Verified on hardware: all eight OTA checks passed on 2026-11-17 (dev key). The release-from-USB-stick test is open. |
-| 24 h soak (G6) | Not run yet. |
+| 24 h soak (G6) | Stable at 180 s on hardware: 437 frames over 21.8 h, none missed, no ghosting (2026-11-18). Open: 60 s over 24 h, and the link and power pulls. |
 | Procedures and results | See [docs/bench.md](docs/bench.md). |
 
 ## Documentation

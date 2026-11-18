@@ -251,7 +251,26 @@ python3 pusher/push.py --host <ip> pusher/out/*.bin --count 1440 --chart-ends \
 
 | Run | Start (UTC) | Pushed | Shown | Missed by cause | panel_errors | brownouts | Refresh ms min/median/max |
 |---|---|---|---|---|---|---|---|
-| | | | | | | | |
+| 1, 60 s | 2026-11-17 09:09 | 9 | 9 | none | 0 | 10 → 10 | 25860 / 25956 / 26054 |
+| 2, 180 s | 2026-11-17 09:18 | 437 | 437 | none | 0 | 10 → 10 | 25742 / 25998 / 26036 |
+
+Reference unit, `v0.1.0-rc1-4-gdf085a0` (dev key), five dithered artwork
+photos cycled, chart first and last.
+
+- Run 1 was stopped after 9 frames (panel idle) to switch to 180 s, the
+  board manual's recommended minimum refresh interval.
+- Run 2 was stopped after 21.8 h instead of 24 h, at 07:07 the next day, with
+  the panel idle. A final chart was pushed by hand (`push.py --count 1
+  --chart-ends`): shown, refresh 25385 ms.
+- Across both runs: no reboot (`boot_count` 44, `uptime_s` 80580 at the
+  end), `link_downs` 0, `frames_rejected` 0, `heap_internal_min` 258272
+  at start and end. Each frame was shown 29.1–29.7 s after its tick.
+- Ghosting: none visible on the last chart against the first, same light.
+- Not done: the link pull and the power pull. Recovery from a lost link or
+  power during a run is still untested. Check 4 of the OTA checks covers a
+  power pull mid-upload only.
+- So this is a pass for stability at 180 s. It is not a full G6 pass: 60 s
+  over 24 h and both pulls remain open.
 
 ## What the kit needs that it doesn't have
 
