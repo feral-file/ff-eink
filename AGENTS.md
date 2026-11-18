@@ -35,6 +35,7 @@ This file is navigation only. The facts live in `docs/`. Read the doc for your t
 | Panel name, hw_id, `/api/v1/config` | `docs/api.md` | `main/identity.c`, `main/name_rules.h` |
 | OTA, rollback, signing, release keys | `docs/ota.md` | `main/ota.c`, `main/api.c` (`firmware_post`), `sdkconfig.defaults`, `partitions.csv` |
 | Image → frame, pusher, provisioning, updater | `docs/pusher.md` | `pusher/dither.py`, `pusher/push.py`, `pusher/panelctl.py` |
+| New boards in bulk: flash, check, burn-in, inventory | `docs/provisioning.md` | `pusher/provision.py` |
 | Operator update steps | `docs/UPDATING.txt` | `pusher/panelctl.py` (`update`) |
 | CI, releases | `docs/development.md#ci-and-releases`, `docs/ota.md` | `.github/workflows/`, `keys/` |
 | Hardware test procedures and results | `docs/bench.md` | — |
@@ -61,6 +62,6 @@ When `sdkconfig.defaults` or `partitions.csv` changes, delete `sdkconfig` and `b
 
 - **Comments.** Comment *why*: invariants, hazards, hardware facts. Cite the source of each fact (datasheet page, vendor manual section, bench measurement).
 - **Pure helpers.** Logic that can run without hardware goes in pure headers (`frame.h`, `name_rules.h`) with host tests in `test/`.
-- **Python tools.** `panelctl.py` and `push.py` use the standard library only. `dither.py` may use Pillow.
+- **Python tools.** `panelctl.py` and `push.py` use the standard library only. `dither.py` may use Pillow. `provision.py` runs esptool as a subprocess and draws the chart with `dither.py`.
 - **Prefer less.** Delete or simplify before adding options or abstractions.
 - **Review.** Before calling a change done, have it reviewed by someone (or an agent) trying to break it, with concrete failure scenarios.

@@ -24,6 +24,7 @@ It is built for multi-panel installations, such as a wall of fifty panels where 
 |---|---|
 | Drive panels from a controller: frame format, endpoints, status fields, errors | [docs/api.md](docs/api.md) |
 | Turn images into frames, push them, provision or inventory panels | [docs/pusher.md](docs/pusher.md) |
+| Flash, check and burn in a batch of new boards before shipping | [docs/provisioning.md](docs/provisioning.md) |
 | Update the panels' firmware on site (museum operators) | [docs/UPDATING.txt](docs/UPDATING.txt) |
 | Know the board: pins, buttons, network path, vendor guidance, open questions | [docs/hardware.md](docs/hardware.md) |
 | Build, sign, flash, recover a board, run tests, cut a release | [docs/development.md](docs/development.md) |

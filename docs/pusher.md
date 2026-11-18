@@ -5,6 +5,7 @@ ff-eink ships the panel firmware, its [API](api.md), and these reference tools. 
 **Requirements:**
 - Python 3.9 or newer.
 - `dither.py` needs Pillow ≥ 9.1, and so does `push.py --chart-ends` (it draws the chart with `dither.py`). Everything else uses the standard library only.
+- `provision.py`, the bulk tool for new boards, is described in [provisioning.md](provisioning.md). It also needs esptool.
 
 ## `dither.py`: any image to a panel frame
 
