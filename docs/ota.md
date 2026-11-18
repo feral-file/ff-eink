@@ -1,6 +1,6 @@
 # Firmware updates: LAN OTA from a laptop, released with the firmware
 
-Status: stages 1–4 are written, and the on-hardware checks in [bench.md](bench.md#ota-checks-before-g6-so-the-soak-runs-the-shipping-image) passed on the reference unit (dev key). The end-to-end test of a release from the USB stick is still open.
+Status: stages 1–4 are written. The on-hardware checks in [bench.md](bench.md#ota-checks-before-g6-so-the-soak-runs-the-shipping-image) passed on the reference unit with the dev key, and a release-key image (`v0.1.0-rc2`) was provisioned and validated on it ([bench.md](bench.md#release-candidate-on-hardware)). An OTA update between two release-key images is still open.
 
 ## Goal and constraints
 
@@ -144,7 +144,7 @@ Maintenance mode and the bench build never start the network, so they never take
 
 **Release steps:**
 
-1. Build the firmware, which is signed at build time with the release key from the secret. The version comes from `git describe`, which is the tag.
+1. Build the firmware, which is signed at build time with the release key from the secret. The version is the tag: the job writes it to `version.txt`, which ESP-IDF prefers over `git describe`. A final release can so be tagged on the same commit as the release candidate it was tested as.
 2. Check that the image's public-key digest equals `keys/release-key.sha256`, and that the image's version equals the tag exactly.
 3. Assemble the release assets:
    - `ff-eink-vX.Y.Z.bin`, the app image used for OTA;
@@ -159,7 +159,7 @@ The bench build is a lab tool. It is built locally and is not released.
 ## Open
 
 - **Unauthenticated calls.** `PUT /api/v1/config` (renaming) and frames stay unauthenticated on the VLAN, like the rest of v1. Firmware is protected by the signature.
-- **End-to-end release test.** Tag a release, USB-provision a board from its `-full.zip` (this moves the board to the release key), then update it from the stick contents with `panelctl.py update`.
+- **End-to-end release test, last step.** Update a board that runs one release over the network to the next, with the `panelctl.py` from the release assets. Provisioning a board from a release `-full.zip` is done ([bench.md](bench.md#release-candidate-on-hardware)).
 
 The one-time GitHub setup is done:
 - the `release` environment requires a maintainer's approval and only deploys `v*` tags;

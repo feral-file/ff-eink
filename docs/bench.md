@@ -126,7 +126,7 @@ booted it.
 | Chart, bars, checker | pass, refresh 26015 / 26111 / 26111 ms, no errors; again 25982 ms after a later restart |
 | SW8 press steps the pattern | pass, twice: restart ~0.13 s after release, `reset_reason: SW`, `restart_cause: reset_key`; next boot `SW8 (GPIO12) at boot: 1 -> normal` |
 | Maintenance mode | pass: SW8 held while plugging in → `SW8 (GPIO12) at boot: 0 … -> maintenance`, no refresh; esptool then connected (`flash_id`) |
-| Grace window with the normal build | not yet run: needs the normal build, scheduled with network bring-up |
+| Grace window with the normal build | pass (2026-11-18): `provision.py flash` reached a board running the normal build within the 60 s window, without SW8 ([release candidate on hardware](#release-candidate-on-hardware)) |
 
 Notes:
 
@@ -247,8 +247,9 @@ python3 pusher/push.py --host <ip> pusher/out/*.bin --count 1440 --chart-ends \
   The link pull is the **router → injector** cable (the board stays powered;
   restore within 10 min or the link watchdog restarts it). The power pull is
   the **injector → adapter** cable, which carries PoE.
-- Pass: no `unattributed` or `no_evidence` misses, `panel_errors == 0`, no `BROWNOUT`
-  (`brownouts` unchanged).
+- Pass: no `unattributed` or `no_evidence` misses, `panel_errors == 0`, and
+  no `BROWNOUT` except the one the power pull causes (`brownouts` up by
+  exactly 1 over the run).
 
 | Run | Start (UTC) | Pushed | Shown | Missed by cause | panel_errors | brownouts | Refresh ms min/median/max |
 |---|---|---|---|---|---|---|---|
@@ -267,11 +268,30 @@ photos cycled, chart first and last.
   end), `link_downs` 0, `frames_rejected` 0, `heap_internal_min` 258272
   at start and end. Each frame was shown 29.1–29.7 s after its tick.
 - Ghosting: none visible on the last chart against the first, same light.
-- Not done: the link pull and the power pull. Recovery from a lost link or
-  power during a run is still untested. Check 4 of the OTA checks covers a
-  power pull mid-upload only.
+- The link pull and the power pull were not done in these runs. They were
+  done afterwards on `v0.1.0-rc2`, outside a soak, and both recovered
+  ([release candidate on hardware](#release-candidate-on-hardware)).
 - So this is a pass for stability at 180 s. It is not a full G6 pass: 60 s
-  over 24 h and both pulls remain open.
+  over 24 h remains open.
+
+## Release candidate on hardware
+
+`v0.1.0-rc2`, the first release-key image on a board, run through
+[provisioning](provisioning.md) on the reference unit on 2026-11-18.
+`SHA256SUMS` matched, the zip's app carried the pinned release key and the
+version `v0.1.0-rc2`.
+
+| Step | Result |
+|---|---|
+| `provision.py flash`, board on the Mac, panel detached, running the normal build | read `hw_id` `44b176cb0cb4` (same as the firmware reports), erased `nvs`, wrote and verified: OK about 8 s after the board was found, within the 60 s grace window, without SW8 |
+| Board on its panel and the PoE adapter | on the LAN about 70 s after power-up; `fw` `v0.1.0-rc2`, `ota_state` `valid`, `boot_count` 1 (`nvs` erased), `usb` `0bda:8152` |
+| `provision.py check` | `ok`; chart shown with the name `ffeink-cb0cb4` in the white area, checked by eye; refresh 26060 ms |
+| Link pull (router → injector, about 53 s) | no reboot (`boot_count` 1), `link_downs` 0 → 1, `ip_acquired` 1 → 2; the next `check` showed the chart, `ok` |
+| `provision.py check --white` | `ok`, panel left white; `ready` `no` because the burn-in hour was skipped on this already soaked board |
+| Power pull (injector → adapter, about 5 s, panel idle) | back on the LAN about 1 min later on `v0.1.0-rc2`, `ota_state` `valid`, `reset_reason` `BROWNOUT`; the next `check` showed the chart and failed with `rebooted since the last check (boot_count 1 -> 2)`, as designed |
+
+The reference board now runs the release key: dev-key images reach it only
+by USB.
 
 ## What the kit needs that it doesn't have
 

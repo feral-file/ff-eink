@@ -66,7 +66,7 @@ The response is built from cached counters and never waits on the panel.
 |---|---|
 | `name` | the panel's wall-position name (see `/api/v1/config`); also its DHCP hostname |
 | `hw_id` | the chip's factory MAC, 12 hex; never changes for a board |
-| `fw` | firmware version (`git describe` of the build; the release tag) |
+| `fw` | firmware version: the release tag, or `git describe` for a local build |
 | `ota_state` | `valid`, or `pending` while a freshly updated image proves itself (docs/ota.md); `unknown` only for a moment at start-up |
 | `rolled_back` | `true` if an updated image failed to prove itself (crash, restart, power loss or no IP before it was marked valid) and the panel went back to the previous image; read once at boot; stays `true` until the next firmware upload is started (even one that is refused or fails), and reads `false` from the boot after that |
 | `uptime_s` | seconds since boot |

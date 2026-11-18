@@ -40,6 +40,10 @@ jobs:
           printf '%s\n' "$SIGNING_KEY" > signing-key.pem
           unset SIGNING_KEY
           . "$IDF_PATH/export.sh"
+          # The version is the tag, not `git describe`: a final release tagged
+          # on the same commit as its release candidate would otherwise be
+          # built as the rc (ESP-IDF prefers version.txt over git describe).
+          printf '%s\n' "$GITHUB_REF_NAME" > version.txt
           idf.py build
           rm -f signing-key.pem
           digest=$(espsecure.py signature_info_v2 build/ff-eink.bin \
@@ -47,7 +51,7 @@ jobs:
           want=$(tr -d ' \n' < keys/release-key.sha256)
           test "$digest" = "$want" || { echo "signed with $digest, expected $want"; exit 1; }
           # The updater skips panels by version string: the image must carry
-          # exactly the tag (not e.g. "<tag>-dirty").
+          # exactly the tag.
           ver=$(python3 -c 'import sys; sys.path.insert(0, "pusher"); import panelctl; print(panelctl.image_version(open("build/ff-eink.bin", "rb").read()))')
           test "$ver" = "$GITHUB_REF_NAME" || { echo "image version $ver != tag $GITHUB_REF_NAME"; exit 1; }
       - name: Assemble assets
