@@ -1,6 +1,6 @@
 # Firmware updates: LAN OTA from a laptop, released with the firmware
 
-Status: stages 1–4 are written. The on-hardware checks in [bench.md](bench.md#ota-checks-before-g6-so-the-soak-runs-the-shipping-image) passed on the reference unit with the dev key, and a release-key image (`v0.1.0-rc2`) was provisioned and validated on it ([bench.md](bench.md#release-candidate-on-hardware)). An OTA update between two release-key images is still open.
+Status: stages 1–4 are written. The on-hardware checks in [bench.md](bench.md#ota-checks-before-g6-so-the-soak-runs-the-shipping-image) passed on the reference unit with the dev key. With the release key, `v0.1.0-rc2` was provisioned on it, and OTA updates between `v0.1.0-rc2` and `v0.1.0` passed both ways with the released `panelctl.py` ([bench.md](bench.md#ota-between-release-images)).
 
 ## Goal and constraints
 
@@ -159,7 +159,7 @@ The bench build is a lab tool. It is built locally and is not released.
 ## Open
 
 - **Unauthenticated calls.** `PUT /api/v1/config` (renaming) and frames stay unauthenticated on the VLAN, like the rest of v1. Firmware is protected by the signature.
-- **End-to-end release test, last step.** Update a board that runs one release over the network to the next, with the `panelctl.py` from the release assets. Provisioning a board from a release `-full.zip` is done ([bench.md](bench.md#release-candidate-on-hardware)).
+- **`panelctl` and slow replies.** One status probe slower than 4 s makes `update` report a panel `unreachable`, and stops the rollout if that panel is the canary; a scan that finds no panel still exits 0. Seen on the bench ([bench.md](bench.md#ota-between-release-images)); to be fixed in the updater.
 
 The one-time GitHub setup is done:
 - the `release` environment requires a maintainer's approval and only deploys `v*` tags;

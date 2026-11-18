@@ -293,6 +293,26 @@ version `v0.1.0-rc2`.
 The reference board now runs the release key: dev-key images reach it only
 by USB.
 
+### OTA between release images
+
+With the `panelctl.py` and images from the `v0.1.0` release assets, the
+way an operator would run it from the USB stick. `SHA256SUMS` matched for
+all assets.
+
+| Update | Result |
+|---|---|
+| `v0.1.0-rc2` → `v0.1.0` | first pass `updated` (`valid`); the self-update pass then reported `failed: unreachable` and the canary stopped. The board had not rebooted and stayed on `v0.1.0` `valid`. `panelctl` gave up on a single status probe that took longer than its 4 s timeout. |
+| `v0.1.0` → `v0.1.0-rc2` | both passes `updated`, 4 min 22 s: `v0.1.0` takes an update |
+| `v0.1.0-rc2` → `v0.1.0` | both passes `updated`, 4 min 51 s; the board ends on `v0.1.0`, `ota_state` `valid` |
+
+**Slow replies.** For about 15 minutes after the first update, status
+replies took 0.8–4.5 s and `/api/v1/config` over 10 s, while ping stayed at
+about 6 ms with no loss. The headers arrived within 15 ms; the body came
+seconds later. It cleared without a reboot, and outside restarts replies
+then took about 20 ms again. The laptop was on Wi-Fi; the cause is not
+known. `panelctl` must tolerate a slow reply rather than call the panel
+unreachable (see [ota.md](ota.md#open)).
+
 ## What the kit needs that it doesn't have
 
 Record findings here as they come up.
