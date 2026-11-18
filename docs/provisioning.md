@@ -72,7 +72,7 @@ each board the script:
 3. records the board in `provision.csv` and prints `OK <hw_id>. Unplug it.`
    with a beep.
 
-About 30 s per board, all ports in parallel. Unplug each board when it
+About 10 s per board once it is found (8 s on the reference board), all ports in parallel. Unplug each board when it
 says so and plug in the next. Ctrl-C stops the script, but not while a
 board is still writing: a cut write leaves that board to be flashed again,
 and the script says so. Running it again continues the same inventory.
@@ -135,7 +135,7 @@ the network: the batch's stragglers.
 
 | Step | Per board | 55 boards |
 |---|---|---|
-| Flash | about 30 s, parallel over the hub | about 5–10 min on a 7-port hub |
+| Flash | about 10 s, parallel over the hub | a few minutes, mostly plugging |
 | Check, label | about 5 min per batch, plus labelling | batches as large as the PoE switch |
 | Burn-in | 1 h per batch, unattended | about 4–5 h in all with a 16-port switch |
 
@@ -164,8 +164,9 @@ records: it maps every label to a board.
 ## Before the first batch
 
 Do once, on the first new kits, and update this page if anything differs.
-The steps above were tried only on the reference board, which had already
-been flashed many times.
+Both stations were run end to end on the reference board with
+`v0.1.0-rc2` ([bench.md](bench.md#release-candidate-on-hardware)), but that
+board had already been flashed many times.
 
 - Do the kits arrive with the panel unplugged from the board? Station 1
   relies on it. If they arrive connected, decide between unplugging the
@@ -173,6 +174,4 @@ been flashed many times.
 - Does the factory image keep the USB serial port up, so esptool can
   connect? (On the reference board it did.) If not, there is no BOOT
   button on this board: ask Good Display how to enter download mode.
-- Run one kit through both stations end to end with a release
-  candidate. That is also the end-to-end release test in
-  [ota.md](ota.md#open).
+- Run one new kit through both stations, factory image first.
