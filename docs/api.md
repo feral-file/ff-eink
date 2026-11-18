@@ -37,10 +37,10 @@ in the background, which takes about 26 s at room temperature and up to about 47
 |---|---|---|---|
 | `202` | `{"seq":N}` | accepted; refresh started | kept |
 | `400` | `{"error":"length"}` | `Content-Length` is not 960,000 | **closed** (the client may see a reset instead of the 400) |
-| `400` | `{"error":"seq"}` | `X-Frame-Seq` missing or not a uint32 | kept (body discarded) |
+| `400` | `{"error":"seq"}` | `X-Frame-Seq` missing or not a uint32 | kept (body read and discarded); **closed** if the body is not in within 10 s |
 | `400` | `{"error":"body"}` | body incomplete within 10 s | **closed** |
 | `422` | `{"error":"pixels"}` | a nibble is not a colour | kept |
-| `429` | `{"error":"busy"}` | another frame is uploading or refreshing | kept (body discarded) |
+| `429` | `{"error":"busy"}` | another frame or a firmware image is uploading, the panel is refreshing, or an accepted firmware image is about to restart the device | kept (body read and discarded); **closed** if the body is not in within 10 s |
 
 `202` means accepted, not shown. A frame is **shown** when `GET
 /api/v1/status` reports `state == "idle"` and `last_seq == N`.
@@ -72,7 +72,7 @@ The response is built from cached counters and never waits on the panel.
 | `uptime_s` | seconds since boot |
 | `boot_count` | boots since NVS was last erased (survives reflashing and updates) |
 | `reset_reason` | this boot's reset reason: `POWERON`, `SW`, `PANIC`, `TASK_WDT`, `BROWNOUT`, … |
-| `restart_cause` | why the firmware restarted itself before this boot: `link_watchdog`, `panel_init`, `reset_key` (SW8), `ota`, or `""`. An OTA rollback and a failed panel SPI re-init restart without a cause (`""`, `reset_reason: SW`); a rollback for lack of an IP may show `link_watchdog` instead, because both give up after 10 min |
+| `restart_cause` | why the firmware restarted itself before this boot: `link_watchdog`, `panel_init`, `api_start`, `reset_key` (SW8), `ota`, or `""`. An OTA rollback and a failed panel SPI re-init restart without a cause (`""`, `reset_reason: SW`); a rollback for lack of an IP may show `link_watchdog` instead, because both give up after 10 min |
 | `brownouts` | brownout resets since NVS was last erased |
 | `state` | `idle`, `receiving` or `refreshing` |
 | `last_seq` | seq of the last frame shown successfully; `0` until a frame has been shown this boot |
@@ -145,11 +145,11 @@ rollout. Design: docs/ota.md.
 
 | Status | Body | Meaning | Connection |
 |---|---|---|---|
-| `202` | `{"version":"…"}` | written; the panel restarts once idle (`restart_cause: ota`) | kept |
+| `202` | `{"version":"…"}` | written; the device restarts about 0.5 s later (`restart_cause: ota`). Until then every frame and firmware upload gets 429 | kept |
 | `400` | `{"error":"length"}` | missing or too large | **closed** |
 | `400` | `{"error":"body"}` | upload broke off, exceeded 60 s, or writing the slot failed | **closed** |
 | `422` | `{"error":"image"}` | not an app image, or an image that fails the header, chip, SHA-256 or **signature** check; nothing changed | kept, or **closed** when refused at the first bytes |
-| `429` | `{"error":"busy"}` | a frame is uploading or refreshing | **closed** |
+| `429` | `{"error":"busy"}` | a frame is uploading or refreshing, or an accepted image is about to restart the device | **closed** |
 | `500` | `{"error":"storage"}` | could not start writing the slot, including while `ota_state` is `pending` (the running image must be valid before it can be updated) | **closed** |
 
 On the "closed" rows the panel closes the connection without reading the
@@ -170,7 +170,8 @@ image (`rolled_back: true`).
 | No IP for 10 min | restart once the panel is idle (`restart_cause: link_watchdog`) |
 | Panel init fails at boot | restart after 10 s (`restart_cause: panel_init`) |
 | SW8 pressed | restart once the panel is idle (`restart_cause: reset_key`) |
-| Firmware accepted | restart once the panel is idle (`restart_cause: ota`) |
+| Firmware accepted | restart about 0.5 s after the reply (`restart_cause: ota`); the upload holds the panel, so no refresh is running |
+| HTTP server fails to start | restart after 10 s (`restart_cause: api_start`) |
 | Updated image has no IP 10 min after the network starts (~11 min after boot), or crashes/restarts before it is valid | back to the previous image (`rolled_back: true`) |
 | Panel error | power-cycle the panel through IO45 (power removal unverified) |
 | Panel SPI bus cannot be re-initialised after an error | immediate restart (`restart_cause: ""`) |

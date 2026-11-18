@@ -16,7 +16,7 @@ This file is navigation only. The facts live in `docs/`. Read the doc for your t
    - Never print, move or upload a release key.
 3. **The API is additive only.** Controllers in the field depend on docs/api.md. You may add fields or endpoints. Never change the meaning of an existing field, status code, error string, or connection behaviour.
 4. **Never move or shrink `nvs`** in `partitions.csv` (0x9000, 24 KB). It holds each panel's wall-position name, and the layout can only change over USB.
-5. **Never cut a refresh short.** Restarts go through `restart_when_idle()` in `main/restart.c`, and the panel state machine guards every writer. Keep both properties.
+5. **Never cut a refresh short.** Restarts go through `main/restart.c`: `restart_when_idle()`, or `restart_held_async()` from a caller that holds the panel claim. The panel state machine guards every writer. Keep both properties.
 6. **Code and docs change in the same commit.** When behaviour changes, update the doc that describes it (see the task table). README stays an introduction plus navigation; details belong in `docs/`.
 7. **Open-source project, MPL-2.0.** Every new source file starts with the MPL-2.0 header used by the existing ones. Docs must make sense to an outside contributor:
    - no organisation-internal names, links, dates or local paths;

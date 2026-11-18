@@ -19,6 +19,8 @@ void restart_with_cause(const char *cause) __attribute__((noreturn));
  * caps), then restart. An interrupted waveform leaves the panel undefined. */
 void restart_when_idle(const char *cause) __attribute__((noreturn));
 
-/* restart_when_idle from a new task, for callers that must return first
- * (an HTTP handler that still has to send its response). */
-void restart_when_idle_async(const char *cause);
+/* Restart about 0.5 s later from a new task, so the caller (an HTTP handler)
+ * can return and its response go out. Only for a caller that holds the
+ * panel claim (panel_claim) and keeps it: then no refresh is running or can
+ * start, so there is nothing to wait for. */
+void restart_held_async(const char *cause);

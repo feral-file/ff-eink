@@ -41,7 +41,14 @@ from pathlib import Path
 NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$")
 
 
-def request(host: str, method: str, path: str, body: dict | None = None, timeout: float = 3.0):
+# Seconds to wait for a status reply. A panel normally answers in tens of
+# milliseconds, but replies of 1-10 s have been seen on the bench
+# (docs/bench.md, "OTA between release images"); a short timeout turns a
+# slow panel into a missing one.
+PROBE_S = 10.0
+
+
+def request(host: str, method: str, path: str, body: dict | None = None, timeout: float = PROBE_S):
     conn = http.client.HTTPConnection(host, 80, timeout=timeout)
     try:
         data = json.dumps(body).encode() if body is not None else None
@@ -112,7 +119,7 @@ def wait_valid(ip: str, version: str, deadline: float, poll: float, old_boot=Non
     restarted into the uploaded image)."""
     while time.time() < deadline:
         time.sleep(poll)
-        st = probe(ip, 4.0)
+        st = probe(ip, PROBE_S)
         if st is None or (old_boot is not None and st.get("boot_count") == old_boot):
             continue
         if st.get("fw") == version and st.get("ota_state") == "valid":
@@ -130,7 +137,11 @@ def update_one(ip: str, data: bytes, version: str, wait: float, poll: float = 5.
     canary does that once to prove the NEW image can itself take an update
     (a release whose update path is broken must never reach the wall)."""
     deadline = time.time() + wait
-    st = probe(ip, 4.0)
+    st = None
+    for _ in range(3):  # one missed reply is not an unreachable panel
+        st = probe(ip, PROBE_S)
+        if st is not None:
+            break
     if st is None:
         return "failed: unreachable"
     if st.get("fw") == version and not force:
@@ -144,7 +155,7 @@ def update_one(ip: str, data: bytes, version: str, wait: float, poll: float = 5.
         if time.time() > deadline:
             return "failed: never idle"
         time.sleep(1)
-        st = probe(ip, 4.0)
+        st = probe(ip, PROBE_S)
     try:
         code, body = post_image(ip, data)
     except (OSError, http.client.HTTPException, ValueError) as e:
@@ -160,7 +171,10 @@ def cmd_update(args) -> int:
     version = image_version(data)
     hosts = [str(h) for h in ipaddress.ip_network(args.network, strict=False).hosts()]
     with ThreadPoolExecutor(max_workers=64) as pool:
-        panels = [p for p in pool.map(lambda ip: probe(ip, 4.0), hosts) if p]
+        panels = [p for p in pool.map(lambda ip: probe(ip, PROBE_S), hosts) if p]
+    if not panels:
+        print(f"no panel answered in {args.network}: nothing updated", file=sys.stderr)
+        return 1
     panels.sort(key=lambda p: p.get("name", ""))
     todo = [p for p in panels if not (p.get("fw") == version and p.get("ota_state") == "valid")]
     print(f"image {version}: {len(panels)} panel(s), {len(todo)} to update", file=sys.stderr)
@@ -242,7 +256,7 @@ def main(argv: list[str]) -> int:
     c.add_argument("network")
     # A panel is silent for ~1-3 s while it receives a frame (single httpd
     # task), so a short timeout would drop live panels during a soak.
-    c.add_argument("--timeout", type=float, default=4.0)
+    c.add_argument("--timeout", type=float, default=PROBE_S)
     c.set_defaults(fn=cmd_scan)
     u = sub.add_parser("update", help="roll a firmware image out to every panel in a network")
     u.add_argument("network")

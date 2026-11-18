@@ -129,12 +129,41 @@ static bool parse_seq(const char *s, uint32_t *out)
 }
 
 /*
+ * Read and drop the rest of a refused frame's body, so the connection stays
+ * usable for the client's next request. Done here rather than left to
+ * httpd's own purge, which has no time limit: a client sending a byte every
+ * couple of seconds would hold the single httpd task for days. Returns
+ * ESP_OK when the body is consumed, ESP_FAIL (httpd closes the socket) when
+ * it does not arrive within the frame deadline.
+ */
+static esp_err_t drain_body(httpd_req_t *req)
+{
+    static char sink[1024]; /* httpd runs handlers on one task */
+    int64_t t0 = esp_timer_get_time();
+    for (;;) {
+        if (esp_timer_get_time() - t0 > BODY_DEADLINE_US) {
+            return ESP_FAIL;
+        }
+        int n = httpd_req_recv(req, sink, sizeof(sink));
+        if (n == 0) {
+            return ESP_OK; /* body consumed, or the peer closed (httpd then closes too) */
+        }
+        if (n == HTTPD_SOCK_ERR_TIMEOUT) {
+            continue; /* bounded by the deadline above */
+        }
+        if (n < 0) {
+            return ESP_FAIL;
+        }
+    }
+}
+
+/*
  * Return values matter here (esp_http_server semantics):
- *   ESP_OK   -> httpd purges any unread body and keeps the connection, so the
- *               client reads our status cleanly. Used when Content-Length is
- *               the exact frame size (purge is bounded to one frame).
- *   ESP_FAIL -> httpd closes the socket. Used for a wrong Content-Length
- *               (purge would be unbounded) and for a broken/stalled body.
+ *   ESP_OK   -> the connection is kept. Only returned once the whole body
+ *               has been read (drain_body for refused frames), so httpd has
+ *               nothing left to purge.
+ *   ESP_FAIL -> httpd closes the socket. Used for a wrong Content-Length,
+ *               and for a body that broke off or did not arrive in time.
  */
 static esp_err_t frame_post(httpd_req_t *req)
 {
@@ -147,12 +176,12 @@ static esp_err_t frame_post(httpd_req_t *req)
     if (httpd_req_get_hdr_value_str(req, "X-Frame-Seq", hdr, sizeof(hdr)) != ESP_OK
         || !parse_seq(hdr, &seq)) {
         reply_error(req, "400 Bad Request", "seq");
-        return ESP_OK;
+        return drain_body(req);
     }
     uint8_t *fb = panel_claim();
     if (!fb) {
         reply_error(req, "429 Too Many Requests", "busy");
-        return ESP_OK;
+        return drain_body(req);
     }
 
     int64_t t0 = esp_timer_get_time();
@@ -265,9 +294,10 @@ static esp_err_t config_put(httpd_req_t *req)
  * frames get 429 during an upload and an upload gets 429 during a refresh.
  * esp_ota_end checks the image header, chip, appended SHA-256 and signature
  * (CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT); a corrupt, truncated or
- * foreign-signed image never becomes bootable. The restart waits for the
- * panel to be idle; the new image then has to prove itself (ota.c) or the
- * bootloader returns to this one.
+ * foreign-signed image never becomes bootable. After a 202 the upload keeps
+ * the panel claim until the restart (see the end of the handler); the new
+ * image then has to prove itself (ota.c) or the bootloader returns to this
+ * one.
  */
 #define FW_DEADLINE_US (60 * 1000 * 1000)
 #define FW_CHUNK 4096
@@ -333,13 +363,19 @@ static esp_err_t firmware_post(httpd_req_t *req)
     }
     esp_app_desc_t desc;
     esp_ota_get_partition_description(slot, &desc);
-    ESP_LOGW(TAG, "firmware %s written to %s in %lld ms; restarting when idle", desc.version,
+    ESP_LOGW(TAG, "firmware %s written to %s in %lld ms; restarting", desc.version,
              slot->label, (esp_timer_get_time() - t0) / 1000);
     char body[64];
     snprintf(body, sizeof(body), "{\"version\":\"%.32s\"}", desc.version);
     reply(req, "202 Accepted", body);
-    panel_abort();
-    restart_when_idle_async("ota");
+    /* Keep the panel claim until the restart. Releasing it would let a
+     * second upload rewrite this slot, which is already the boot slot: the
+     * signature check would refuse that image with a 422, but too late, and
+     * the bootloader (RSA scheme, no secure boot) checks only the hash at
+     * boot, so it would run the unsigned image. Held, the claim refuses
+     * every frame and firmware upload with 429 until the restart, and no
+     * refresh can be running, so the restart needs no wait for idle. */
+    restart_held_async("ota");
     return ESP_OK;
 }
 

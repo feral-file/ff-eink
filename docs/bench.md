@@ -310,8 +310,8 @@ replies took 0.8–4.5 s and `/api/v1/config` over 10 s, while ping stayed at
 about 6 ms with no loss. The headers arrived within 15 ms; the body came
 seconds later. It cleared without a reboot, and outside restarts replies
 then took about 20 ms again. The laptop was on Wi-Fi; the cause is not
-known. `panelctl` must tolerate a slow reply rather than call the panel
-unreachable (see [ota.md](ota.md#open)).
+known. Since then `panelctl` waits up to 10 s for a status reply and tries
+three times before it calls a panel unreachable.
 
 ## What the kit needs that it doesn't have
 

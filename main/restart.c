@@ -42,14 +42,16 @@ void restart_when_idle(const char *cause)
     }
 }
 
-static void restart_task(void *arg)
+static void restart_held_task(void *arg)
 {
     vTaskDelay(pdMS_TO_TICKS(500)); /* let the caller's HTTP response go out */
-    restart_when_idle((const char *)arg);
+    restart_with_cause((const char *)arg);
 }
 
-void restart_when_idle_async(const char *cause)
+void restart_held_async(const char *cause)
 {
     /* cause must be a string literal (static lifetime). */
-    xTaskCreate(restart_task, "restart", 3072, (void *)cause, 2, NULL);
+    if (xTaskCreate(restart_held_task, "restart", 3072, (void *)cause, 2, NULL) != pdPASS) {
+        restart_with_cause(cause); /* no task: restart without the delay */
+    }
 }
