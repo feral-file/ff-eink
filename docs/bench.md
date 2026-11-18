@@ -196,6 +196,7 @@ python3 pusher/push.py --host <ip> pusher/out/*.bin --count 10 --log bringup.csv
 | Date | DHCP | usb / configs | upload_ms | 10 in a row | Notes |
 |---|---|---|---|---|---|
 | 2026-11-15 | lease on first boot; `scan` finds `ffeink-cb0cb4` | `0bda:8152` / 2 | 1220–1283 | not run: 3 frames (chart, then 2 photos at a 180 s interval), all shown, 0 misses | P2C5V adapter, normal build at `ac8271b`, `ota_state` `valid`, `link_downs` 0, `panel_errors` 0. Each frame shown in 29.2–29.3 s, refresh 25999–26047 ms. Boot `reset_reason` was `BROWNOUT` (`brownouts` 1 → 7 over a day of replugs); unchanged across all three refreshes and 8 min of uptime. |
+| 2026-11-17 | lease on every boot of a network-enabled image during the OTA checks | `0bda:8152` / 2 | 1224 (POST 1.39–1.76 s on the laptop) | pass: 437 in a row in the G6 run at 180 s, 0 misses | Same adapter, `v0.1.0-rc1-4-gdf085a0`. See G6 for the run. |
 
 The first attempt found nothing on the LAN. With no log once USB host is up,
 a temporary build painted the panel by bring-up stage after `net_start`

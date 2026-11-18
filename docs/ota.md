@@ -65,7 +65,7 @@ Defined in `partitions.csv`:
 - The release job runs the tagged commit's own workflow and code with the key, and a `v*` tag can point at any commit. So:
   - limit the environment's deployments to `v*` tags, and restrict who may create `v*` tags with a tag ruleset;
   - **approvers check that the tagged commit is on `main`** before approving;
-  - protect `main` (see Open), so workflow changes need a reviewed PR.
+  - protect `main`, so workflow changes need a reviewed PR.
 - The approval is the real control: whoever can get a run approved can have arbitrary code signed.
 - The release job also refuses to publish if the image's version string is not exactly the tag, or if it was signed with any key other than the one in `keys/release-key.sha256`.
 
@@ -159,10 +159,13 @@ The bench build is a lab tool. It is built locally and is not released.
 ## Open
 
 - **Unauthenticated calls.** `PUT /api/v1/config` (renaming) and frames stay unauthenticated on the VLAN, like the rest of v1. Firmware is protected by the signature.
-- **One-time GitHub setup, by a maintainer.**
-  1. Create the `release` environment with the maintainers as required reviewers, deployments limited to `v*` tags.
-  2. ~~Create the release key, its secret and its backup, and commit `keys/release-key.sha256`.~~ Done (2026-11-12).
-  3. Protect `main`, and add a tag ruleset restricting who may create `v*` tags.
+- **End-to-end release test.** Tag a release, USB-provision a board from its `-full.zip` (this moves the board to the release key), then update it from the stick contents with `panelctl.py update`.
+
+The one-time GitHub setup is done:
+- the `release` environment requires a maintainer's approval and only deploys `v*` tags;
+- the release key, its secret and its backup exist, and `keys/release-key.sha256` is committed;
+- a ruleset requires a pull request for `main` and blocks force pushes and deletion;
+- a tag ruleset lets only repository admins create, move or delete `v*` tags.
 
 ## Staging
 
