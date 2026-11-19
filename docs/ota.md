@@ -1,6 +1,6 @@
 # Firmware updates: LAN OTA from a laptop, released with the firmware
 
-Status: stages 1–4 are written. The on-hardware checks in [bench.md](bench.md#ota-checks-before-g6-so-the-soak-runs-the-shipping-image) passed on the reference unit with the dev key. With the release key, `v0.1.0-rc2` was provisioned on it, and OTA updates between `v0.1.0-rc2` and `v0.1.0` passed both ways with the released `panelctl.py` ([bench.md](bench.md#ota-between-release-images)).
+Status: stages 1–4 are written. The on-hardware checks in [bench.md](bench.md#ota-checks-before-g6-so-the-soak-runs-the-shipping-image) passed on the reference unit with the dev key. With the release key, `v0.1.0-rc2` was provisioned on it, and OTA updates between `v0.1.0-rc2` and `v0.1.0` passed both ways with the released `panelctl.py` ([bench.md](bench.md#ota-between-release-images)). `v0.1.1`, which keeps the panel claim until an OTA restart, was checked on it the same way ([bench.md](bench.md#v011-on-hardware)).
 
 ## Goal and constraints
 

@@ -313,6 +313,26 @@ then took about 20 ms again. The laptop was on Wi-Fi; the cause is not
 known. Since then `panelctl` waits up to 10 s for a status reply and tries
 three times before it calls a panel unreachable.
 
+## v0.1.1 on hardware
+
+2026-11-19, reference board, release key, **panel detached**: the normal
+image boots, joins the network and takes updates without a panel (boot only
+opens the SPI bus; no frame was pushed).
+
+| Step | Result |
+|---|---|
+| `v0.1.0` → `v0.1.1-rc1`, with the rc's `panelctl.py` | both canary passes `updated`, 4 min 16 s |
+| Second upload right after a `202` (rc1 running; first upload the `v0.1.0` release image, second a dev-key image sent the moment the `202` arrived) | second upload never accepted: once the connection was reset within 0.02 s, once (headers only) there was no reply before the restart. Both times the board then booted `v0.1.0`, `valid`, one boot later: the second image was not written |
+| `v0.1.0` → `v0.1.1-rc1` again, then the same check with headers only | as above |
+| `v0.1.0` → `v0.1.1`, with the release's `panelctl.py` | both canary passes `updated`, 4 min 24 s; the board runs `v0.1.1`, `valid` |
+
+The `429` the handler sends in that half second was not seen: the restart
+0.5 s after the `202` closed the connection first. What matters is that the
+second upload is not taken.
+
+`v0.1.1` and `v0.1.1-rc1` are tagged on the same commit; the release built
+`v0.1.1` with that version string.
+
 ## What the kit needs that it doesn't have
 
 Record findings here as they come up.
